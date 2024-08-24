@@ -9,8 +9,9 @@ import os
 import scrapper
 import scrapper.db_test
 
-
-os.chdir(os.path.dirname(os.path.abspath(__file__)))
+cwd = os.path.dirname(os.path.abspath(__file__))
+os.chdir(cwd)
+os.makedirs(os.path.join(cwd, 'locations'), exist_ok=True)
 with open("token.txt", "r", encoding="utf8") as file:
     token = file.readline().strip()
 with open('creds.txt', 'r') as file:
@@ -42,9 +43,10 @@ async def main():
             # except Exception as ex:
             #    print(f'ERROR: {ex}')
             message_queue.task_done()
-            print(f"Welcome, your token is: {token}")
+
     bot = AsyncTeleBot(
         token=token,  parse_mode='MarkdownV2', colorful_logs=True)
+    print(f"Welcome, your token is: {token}")
 
     @bot.message_handler(commands=["start", "sayahoj"])
     async def start(m):
