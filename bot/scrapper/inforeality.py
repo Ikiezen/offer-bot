@@ -40,6 +40,7 @@ def scrapper(database, locations, credentials, mock=False):
             login = driver.find_element(By.XPATH, '//*[@id="inpLogin"]')
             password = driver.find_element(By.XPATH, '//*[@id="inpPassword"]')
 
+
             login.send_keys(credentials[0])
             password.send_keys(credentials[1] + '\n')
 
@@ -70,8 +71,8 @@ def scrapper(database, locations, credentials, mock=False):
             # for v in openfiles.values():
             #     misc_file = v
             #     break
-            is_sale = 'Prodej' in name.text
             if location_sanitized in locations and not is_sale:
+
                 # print(f'[{sanitize(name.text)}]({sanitize(link)})\n{sanitize(f'**{price.text}**')}\n{sanitize(location.text)}\n{
                 #       sanitize(contact.text)}\n{sanitize('(' + date.text + ')')}', file=openfiles[location_sanitized], end=";;;\n")
                 database.insert_offer(location_sanitized, offer)

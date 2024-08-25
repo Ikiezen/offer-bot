@@ -7,7 +7,7 @@ class Database:
 
     def __init__(self):
         self.connection = sqlite3.connect(
-            'locations/location.db', check_same_thread=False)
+
         self.cursor = self.connection.cursor()
 
         self.initialize_database()
