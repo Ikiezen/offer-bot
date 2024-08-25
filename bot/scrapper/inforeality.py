@@ -70,8 +70,8 @@ def scrapper(database, locations, credentials, mock=False):
             # for v in openfiles.values():
             #     misc_file = v
             #     break
-
-            if location_sanitized in locations:
+            is_sale = 'Prodej' in name.text
+            if location_sanitized in locations and not is_sale:
                 # print(f'[{sanitize(name.text)}]({sanitize(link)})\n{sanitize(f'**{price.text}**')}\n{sanitize(location.text)}\n{
                 #       sanitize(contact.text)}\n{sanitize('(' + date.text + ')')}', file=openfiles[location_sanitized], end=";;;\n")
                 database.insert_offer(location_sanitized, offer)
