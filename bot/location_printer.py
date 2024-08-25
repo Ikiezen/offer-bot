@@ -3,24 +3,29 @@ import asyncio
 
 class LocationPrinter:
 
-    def formatter(self, data):
-        formatted = []
-        for d in data:
-            name, link, price, location, date, contact = d
-            formatted.append((name, link, f'**{price}**',
-                              location, f'({date})', contact))
-        return formatted
-
-    def generator(self, data):
-        formatted = self.formatter(data)
-        if formatted:
-            for i in range(0, len(formatted), 5):
+    async def generator(self, db):
+        while True:
+            updates = await db.get_new(self.location)
+            # print("updates:", updates)
+            await db.invalidate(updates, self.location)
+            if not updates:
+                yield None
+            else:
                 sanitizer = {ord('.'): '\\.', ord('+'): '\\+', ord('-'): '\\-',
                              ord(')'): '\\)', ord('('): '\\(', ord('!'): '\\!', ord('|'): '\\|'}
-                yield "\n\n".join([f'[{offer[0].translate(sanitizer)}]({offer[1].translate(sanitizer)})\n{offer[2]}\n{offer[3].translate(sanitizer)}\n{offer[4].translate(sanitizer)}\n{offer[5].translate(sanitizer)}' for offer in formatted[i:i+5]])
+                result = ""
+                for offer in updates:
+                    print(offer)
+                    result += f'''[{offer[0].translate(sanitizer)}]({offer[1].translate(sanitizer)})
+{str(offer[2])}
+{str(offer[3]).translate(sanitizer)}
+{str(offer[4]).translate(sanitizer)}
+{str(offer[5]).translate(sanitizer)}\n\n'''
+                yield result
 
-    def __init__(self, queue, bot, offer_list):
-        self.offer_generator = self.generator(offer_list)
+    def __init__(self, queue, bot, database, location):
+        self.offer_generator = self.generator(database)
+        self.location = location
         self.queue = queue
         self.bot = bot
         self.is_working = False
@@ -48,15 +53,16 @@ class LocationPrinter:
         if not self.is_working:
             return
 
-        messages = next(self.offer_generator, None)
+        messages = await self.offer_generator.__anext__()
         if messages:
-            print(len(messages), messages)
-        if message.message_thread_id:
-            await self.bot.send_message(message.chat.id, messages,
-                                        message_thread_id=message.message_thread_id)
-        else:
-            await self.bot.send_message(message.chat.id, messages)
+            print(len(messages))
+            if message.message_thread_id:
+                await self.bot.send_message(message.chat.id, messages,
+                                            message_thread_id=message.message_thread_id)
+            else:
+                await self.bot.send_message(message.chat.id, messages)
         await asyncio.sleep(self.delay)
+        # print("next")
         await self.__add_to_queue()
 
     async def __add_to_queue(self):
