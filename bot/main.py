@@ -46,12 +46,12 @@ async def main():
     async def scan_for_new(location):
         return await database.read_offers(location)
 
-    for location in locations:
-        with open(f'locations/inforeality_{location}.txt', 'r', encoding='utf8') as offersfile:
-            offers = offersfile.read()
-            offers = offers.split(';;;')
+    # for location in locations:
+    #     with open(f'locations/inforeality_{location}.txt', 'r', encoding='utf8') as offersfile:
+    #         offers = offersfile.read()
+    #         offers = offers.split(';;;')
 
-        offerlist[location] = offers
+    #     offerlist[location] = offers
 
     message_queue = asyncio.Queue()
 
