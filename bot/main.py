@@ -25,7 +25,7 @@ async def main():
     """Entry point"""
     locations = [f'Praha_{i}' for i in range(1, 11)]
     locations.append('Prodej')
-    locations.append('Bez realitky')
+    locations.append('Bez_realitky')
     offerlist = {}
     printers = []
     database = scrapper.db.Database()
@@ -111,7 +111,7 @@ async def main():
         # print(a)
     # await async_inforeality_scrapper(locations, credentials, True)
     asyncio.create_task(async_inforeality_scrapper(
-        locations, credentials, True))
+        locations, credentials, mock=False))
     asyncio.create_task(process_queue())
     await bot.infinity_polling(allowed_updates=["message", "message_reaction"])
 

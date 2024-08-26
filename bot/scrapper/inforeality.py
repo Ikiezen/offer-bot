@@ -5,6 +5,7 @@ from random import randint
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support.ui import Select
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.options import Options
 from . import db
@@ -20,8 +21,8 @@ def sanitize(target: str) -> str:
 def scrapper(database, locations, credentials, mock=False):
     chrome_options = Options()
 
-
-    chrome_options.add_argument("--headless")  # Enable headless mode
+    if not mock:
+        chrome_options.add_argument("--headless")  # Enable headless mode
     # Disable GPU acceleration (needed for some OSes)
     chrome_options.add_argument("--disable-gpu")
     # Set window size (optional)
@@ -45,26 +46,37 @@ def scrapper(database, locations, credentials, mock=False):
             login.send_keys(credentials[0])
             password.send_keys(credentials[1] + '\n')
 
-            a = driver.find_element(By.XPATH, '//*[@id="mnNavlist"]/li[1]/a')
-        a.click()
+            try:
+                prev = WebDriverWait(driver, 1).until(EC.presence_of_element_located((
+                    By.XPATH, '// *[@id = "ctl00_btShowLast"]')))
+                prev.click()
+            except:
+                a = WebDriverWait(driver, 1).until(EC.presence_of_element_located((
+                    By.XPATH, '//*[@id="mnNavlist"]/li[1]/a')))
 
-        a = driver.find_element(
-            By.XPATH, '//*[@id="ctl00_MainContent_tbcFilter_tbpAdvanced_ddlAge"]/option[3]')
+                a.click()
 
-        a.click()
+                select_elem = WebDriverWait(driver, 3).until(EC.presence_of_element_located((
+                    By.XPATH, '//*[@id="ctl00_MainContent_tbcFilter_tbpAdvanced_ddlAge_chosen"]')))
+                select_elem.click()
+                option = driver.find_element(
+                    By.XPATH, '//*[@id="ctl00_MainContent_tbcFilter_tbpAdvanced_ddlAge_chosen"]/div/ul/li[2]')
+                option.click()
 
-        # is rental demand
-        # a = driver.find_element(
-        #     By.XPATH, '//*[@id = "ctl00_MainContent_tbcFilter_tbpAdvanced_ddlActivity"]/option[5]')
-        # a.click()
+                # is rental demand
+                # a = driver.find_element(
+                #     By.XPATH, '//*[@id = "ctl00_MainContent_tbcFilter_tbpAdvanced_ddlActivity"]/option[5]')
+                # a.click()
 
-        a = driver.find_element(
-            By.XPATH, '//*[@id="ctl00_MainContent_tbcFilter_tbpAdvanced_tbPriceFrom"]')
-        a.send_keys('10000')
+                a = WebDriverWait(driver, 1).until(EC.presence_of_element_located((
+                    By.XPATH, '//*[@id="ctl00_MainContent_tbcFilter_tbpAdvanced_tbPriceFrom"]')))
 
-        a = driver.find_element(
-            By.XPATH, '//*[@id="ctl00_MainContent_tbcFilter_tbpAdvanced_btShow"]')
-        a.click()
+                a.send_keys('10000')
+
+                a = WebDriverWait(driver, 1).until(EC.presence_of_element_located(
+                    (By.XPATH, '//*[@id="ctl00_MainContent_tbcFilter_tbpAdvanced_btShow"]')))
+
+                a.click()
 
         # Wait for results to load
         results = WebDriverWait(driver, 10).until(
@@ -94,12 +106,12 @@ def scrapper(database, locations, credentials, mock=False):
             #     misc_file = v
             #     break
             is_sale = 'Prodej' in name.text
-            is_have_provision = not 'bez realitky' in name.text.lower()
+            is_have_provision = 'bez realitky' in name.text.lower()
             if location_sanitized in locations:
                 if is_sale:
                     database.insert_offer('Prodej', offer)
 
-                elif is_have_provision:
+                elif not is_have_provision:
                     database.insert_offer('Bez_realitky', offer)
 
                 else:
@@ -118,3 +130,4 @@ def scrapper(database, locations, credentials, mock=False):
     finally:
         # Close the WebDriver
         driver.quit()
+        print('Scrapping is done')
