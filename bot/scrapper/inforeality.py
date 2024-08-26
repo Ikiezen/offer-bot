@@ -26,7 +26,6 @@ def scrapper(database, locations, credentials, mock=False):
     chrome_options.add_argument("--disable-gpu")
     # Set window size (optional)
     chrome_options.add_argument("--window-size=1920x1080")
-    chrome_options.add_argument("--disable-dev-shm-usage")
     chrome_options.add_argument("--no-sandbox")
 
     driver = webdriver.Chrome(options=chrome_options)
@@ -72,9 +71,9 @@ def scrapper(database, locations, credentials, mock=False):
             # for v in openfiles.values():
             #     misc_file = v
             #     break
-            is_sale = 'Prodej' in name.text
             is_not_have_provision = 'bez realitky' in name.text.lower()
             if location_sanitized in locations and not is_sale and not is_not_have_provision:
+
                 # print(f'[{sanitize(name.text)}]({sanitize(link)})\n{sanitize(f'**{price.text}**')}\n{sanitize(location.text)}\n{
                 #       sanitize(contact.text)}\n{sanitize('(' + date.text + ')')}', file=openfiles[location_sanitized], end=";;;\n")
                 database.insert_offer(location_sanitized, offer)
