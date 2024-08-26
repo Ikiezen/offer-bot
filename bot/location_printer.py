@@ -5,6 +5,7 @@ class LocationPrinter:
 
     async def generator(self, db):
         while True:
+            await db.create_new_cursor()
             updates = await db.get_new(self.location)
             # print("updates:", updates)
             await db.invalidate(updates, self.location)
@@ -47,6 +48,7 @@ class LocationPrinter:
             if self.message.message_thread_id == message.message_thread_id:
                 self.is_working = False
         print(f"stop: {self.message.text} {not self.is_working}")
+
         return not self.is_working
 
     async def __reply(self, message):

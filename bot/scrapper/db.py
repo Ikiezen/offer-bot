@@ -47,11 +47,14 @@ class Database:
             # print(e)
 
     async def read_offers(self, location: str) -> list:
-        read_query = f'''SELECT header, link, price, location, date, contact from {
+        read_query = f'''SELECT header, link, price, location, date, contact, status from {
             location}'''
         self.cursor.execute(read_query)
         result = self.cursor.fetchall()
         return result
+
+    async def create_new_cursor(self):
+        self.cursor = self.connection.cursor()
 
     async def get_new(self, location: str) -> list:
         read_query = f'''SELECT header, link, price, location, date, contact, status from {

@@ -1,4 +1,4 @@
-locations/*
+bot/locations/
 __pycache__
 .vscode
 .mypy_cache
@@ -6,3 +6,4 @@ lib
 bin
 lib64
 pyvenv.cfg
+bot/creds.txt
