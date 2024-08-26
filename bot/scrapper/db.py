@@ -58,7 +58,7 @@ class Database:
 
     async def get_new(self, location: str) -> list:
         read_query = f'''SELECT header, link, price, location, date, contact, status from {
-            location} where status='not sent' LIMIT 5'''
+            location} where status='not sent' LIMIT 1'''
         self.cursor.execute(read_query)
         result = self.cursor.fetchall()
         return result
