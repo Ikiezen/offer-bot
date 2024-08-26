@@ -106,12 +106,11 @@ def scrapper(database, locations, credentials, mock=False):
             #     misc_file = v
             #     break
             is_sale = 'Prodej' in name.text
-            is_have_provision = 'bez realitky' in name.text.lower()
+            is_have_no_provision = 'bez realitky' in name.text.lower()
             if location_sanitized in locations:
                 if is_sale:
                     database.insert_offer('Prodej', offer)
-
-                if not is_have_provision:
+                if is_have_no_provision:
                     database.insert_offer('Bez_realitky', offer)
 
                 else:
