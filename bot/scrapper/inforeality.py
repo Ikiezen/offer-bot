@@ -45,6 +45,27 @@ def scrapper(database, locations, credentials, mock=False):
             login.send_keys(credentials[0])
             password.send_keys(credentials[1] + '\n')
 
+            a = driver.find_element(By.XPATH, '//*[@id="mnNavlist"]/li[1]/a')
+        a.click()
+
+        a = driver.find_element(
+            By.XPATH, '//*[@id="ctl00_MainContent_tbcFilter_tbpAdvanced_ddlAge"]/option[3]')
+
+        a.click()
+
+        # is rental demand
+        # a = driver.find_element(
+        #     By.XPATH, '//*[@id = "ctl00_MainContent_tbcFilter_tbpAdvanced_ddlActivity"]/option[5]')
+        # a.click()
+
+        a = driver.find_element(
+            By.XPATH, '//*[@id="ctl00_MainContent_tbcFilter_tbpAdvanced_tbPriceFrom"]')
+        a.send_keys('10000')
+
+        a = driver.find_element(
+            By.XPATH, '//*[@id="ctl00_MainContent_tbcFilter_tbpAdvanced_btShow"]')
+        a.click()
+
         # Wait for results to load
         results = WebDriverWait(driver, 10).until(
             # Replace with actual class name
