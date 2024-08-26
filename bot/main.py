@@ -23,7 +23,9 @@ with open('creds.txt', 'r') as file:
 
 async def main():
     """Entry point"""
-    locations = [f'Praha_{i}' for i in range(0, 11)]
+    locations = [f'Praha_{i}' for i in range(1, 11)]
+    locations.append('Prodej')
+    locations.append('Bez realitky')
     offerlist = {}
     printers = []
     database = scrapper.db.Database()
