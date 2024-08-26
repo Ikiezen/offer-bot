@@ -73,11 +73,18 @@ def scrapper(database, locations, credentials, mock=False):
             #     misc_file = v
             #     break
             is_sale = 'Prodej' in name.text
-            is_not_have_provision = 'bez realitky' in name.text.lower()
-            if location_sanitized in locations and not is_sale and not is_not_have_provision:
+            is_have_provision = not 'bez realitky' in name.text.lower()
+            if location_sanitized in locations:
+                if is_sale:
+                    database.insert_offer('Prodej', offer)
+
+                elif is_have_provision:
+                    database.insert_offer('Bez_realitky', offer)
+
+                else:
                 # print(f'[{sanitize(name.text)}]({sanitize(link)})\n{sanitize(f'**{price.text}**')}\n{sanitize(location.text)}\n{
                 #       sanitize(contact.text)}\n{sanitize('(' + date.text + ')')}', file=openfiles[location_sanitized], end=";;;\n")
-                database.insert_offer(location_sanitized, offer)
+                    database.insert_offer(location_sanitized, offer)
             else:
                 # print(f'[{sanitize(header.text)}]({sanitize(link)})\n{sanitize(f'**{price.text}**')}\n{sanitize(
                 #     location.text)}\n{sanitize(contact.text)}\n{sanitize('(' + date.text + ')')}', file=misc_file, end=";;;\n")

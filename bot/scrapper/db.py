@@ -15,6 +15,8 @@ class Database:
 
     def initialize_database(self):
         locations = [f'Praha_{i}' for i in range(0, 11)]
+        locations.append('Prodej')
+        locations.append('Bez_realitky')
         for location in locations:
             create_location_tables = f'''
             CREATE TABLE IF NOT EXISTS {location} (
