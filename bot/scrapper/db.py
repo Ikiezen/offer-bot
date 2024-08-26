@@ -47,7 +47,9 @@ class Database:
             # print(e)
 
     async def read_offers(self, location: str) -> list:
+
         read_query = f'''SELECT header, link, price, location, date, contact, status from {
+
             location}'''
         self.cursor.execute(read_query)
         result = self.cursor.fetchall()
