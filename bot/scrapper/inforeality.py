@@ -111,7 +111,7 @@ def scrapper(database, locations, credentials, mock=False):
                 if is_sale:
                     database.insert_offer('Prodej', offer)
 
-                elif not is_have_provision:
+                if not is_have_provision:
                     database.insert_offer('Bez_realitky', offer)
 
                 else:
