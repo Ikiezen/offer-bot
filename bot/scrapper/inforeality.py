@@ -105,13 +105,13 @@ def scrapper(database, locations, credentials, mock=False):
             # for v in openfiles.values():
             #     misc_file = v
             #     break
-            is_sale = 'Prodej' in name.text
+            is_sale = 'prodam' in name.text or 'prodej' in name.text,lower()
             is_have_no_provision = 'bez realitky' in name.text.lower()
             if location_sanitized in locations:
-                if is_sale:
-                    database.insert_offer('Prodej', offer)
                 if is_have_no_provision:
                     database.insert_offer('Bez_realitky', offer)
+                elif is_sale:
+                    database.insert_offer('Prodej', offer)
 
                 else:
                 # print(f'[{sanitize(name.text)}]({sanitize(link)})\n{sanitize(f'**{price.text}**')}\n{sanitize(location.text)}\n{
@@ -120,7 +120,7 @@ def scrapper(database, locations, credentials, mock=False):
             else:
                 # print(f'[{sanitize(header.text)}]({sanitize(link)})\n{sanitize(f'**{price.text}**')}\n{sanitize(
                 #     location.text)}\n{sanitize(contact.text)}\n{sanitize('(' + date.text + ')')}', file=misc_file, end=";;;\n")
-                database.insert_offer('Praha_0', offer)
+                database.insert_offer('Vsechno', offer)
         # (close(openfile) for openfile in openfiles)
         database.commit()
         # print(database.read_offers("Praha_1"))

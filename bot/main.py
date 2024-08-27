@@ -68,10 +68,10 @@ async def main():
         token=token,  parse_mode='MarkdownV2', colorful_logs=True)
     print(f"Welcome, your token is: {token}")
 
-    @bot.message_handler(commands=["start", "sayahoj"])
-    async def start(m):
+    @bot.message_handler(commands=["pomoc", "help"])
+    async def help(m):
         async def reply(message):
-            await bot.send_message(message.chat.id, "Ahoj\\! Pro zahájení vyhledávání nemovitosti zadejte /locate a název města\\. Například:\\ /locate Praha")
+            await bot.send_message(message.chat.id, "Ahoj\\!Chcete-li zahájit vyhledávání nemovitosti, zadejte /locate následovaný názvem čtvrti\\. Například:\\/locate Praha 4")
         await message_queue.put((m, reply))
 
     @bot.message_handler(commands=["stop"])
@@ -113,7 +113,7 @@ async def main():
     asyncio.create_task(async_inforeality_scrapper(
         locations, credentials, mock=False))
     asyncio.create_task(process_queue())
-    await bot.infinity_polling(allowed_updates=["message", "message_reaction"])
+    await bot.infinity_polling(allowed_updates=["message", "message_reaction"], request_timeout=900, timeout=None)
 
 if __name__ == "__main__":
     asyncio.run(main())
