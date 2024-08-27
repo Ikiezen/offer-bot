@@ -71,7 +71,7 @@ async def main():
     @bot.message_handler(commands=["pomoc", "help"])
     async def help(m):
         async def reply(message):
-            await bot.send_message(message.chat.id, "Ahoj\\!Chcete-li zahájit vyhledávání nemovitosti, zadejte /locate následovaný názvem čtvrti\\. Například:\\/locate Praha 4")
+            await bot.send_message(message.chat.id, "Ahoj\\!Chcete\\-li zahájit vyhledávání nemovitosti, zadejte /locate následovaný názvem čtvrti\\. Například:\\/locate Praha 4")
         await message_queue.put((m, reply))
 
     @bot.message_handler(commands=["stop"])
