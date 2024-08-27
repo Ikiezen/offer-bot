@@ -14,7 +14,8 @@ class Database:
         self.connection.commit()
 
     def initialize_database(self):
-        locations = [f'Praha_{i}' for i in range(0, 11)]
+        locations = [f'Praha_{i}' for i in range(1, 11)]
+        locations.append('Vsechno')
         locations.append('Prodej')
         locations.append('Bez_realitky')
         for location in locations:
