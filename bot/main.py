@@ -71,8 +71,14 @@ async def main():
     @bot.message_handler(commands=["pomoc", "help"])
     async def help(m):
         async def reply(message):
-            await bot.send_message(message.chat.id, "Ahoj\\!Chcete\\-li zahájit vyhledávání nemovitosti, zadejte /locate následovaný názvem čtvrti\\. Například:\\/locate Praha 4")
+            await bot.send_message(message.message_thread_id, "Ahoj\\!Chcete\\-li zahájit vyhledávání nemovitosti, zadejte /locate následovaný názvem čtvrti\\. Například:\\/locate Praha 4")
         await message_queue.put((m, reply))
+
+    # @bot.message_handler(commands=['start'])
+    # async def start(m):
+    #     async def reply(message):
+    #         pass
+
 
     @bot.message_handler(commands=["stop"])
     async def stop(m: telebot.types.Message):

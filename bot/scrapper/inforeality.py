@@ -105,7 +105,7 @@ def scrapper(database, locations, credentials, mock=False):
             # for v in openfiles.values():
             #     misc_file = v
             #     break
-            is_sale = 'prodam' in name.text or 'prodej' in name.text,lower()
+            is_sale = 'prodam' in name.text or 'prodej' in name.text.lower()
             is_have_no_provision = 'bez realitky' in name.text.lower()
             if location_sanitized in locations:
                 if is_have_no_provision:
