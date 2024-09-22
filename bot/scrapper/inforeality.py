@@ -11,12 +11,10 @@ from selenium.webdriver.chrome.options import Options
 from . import db
 import time
 
-
 def sanitize(target: str) -> str:
     sanitizer = {ord('.'): '\\.', ord('+'): '\\+', ord('-'): '\\-',
                  ord(')'): '\\)', ord('('): '\\(', ord('!'): '\\!', ord('|'): '\\|'}
     return target.translate(sanitizer)
-
 
 def scrapper(database, locations, credentials, mock=False):
     chrome_options = Options()
@@ -79,54 +77,61 @@ def scrapper(database, locations, credentials, mock=False):
                 a.click()
 
         # Wait for results to load
-        results = WebDriverWait(driver, 10).until(
-            # Replace with actual class name
-            EC.presence_of_element_located((By.CLASS_NAME, "dvAdvertismen"))
-        )
+        try:
+            results = WebDriverWait(driver, 10).until(
+                # Replace with actual class name
+                EC.presence_of_element_located(
+                    (By.CLASS_NAME, "dvAdvertismen"))
+            )
 
-        # database = db.Database()
-        # openfiles = {location: open(
-        #     f'locations/inforeality_{location}.txt', 'w') for location in locations}
-        # Extract and print results
-        for body, header in zip(driver.find_elements(By.CLASS_NAME, "dvAdvBody"), driver.find_elements(By.CLASS_NAME, "advBHeader")):
-            name = header.find_element(By.CLASS_NAME, "advName")
-            link = name.get_attribute('href')
+            # database = db.Database()
+            # openfiles = {location: open(
+            #     f'locations/inforeality_{location}.txt', 'w') for location in locations}
+            # Extract and print results
+            for body, header in zip(driver.find_elements(By.CLASS_NAME, "dvAdvBody"), driver.find_elements(By.CLASS_NAME, "advBHeader")):
+                name = header.find_element(By.CLASS_NAME, "advName")
+                link = name.get_attribute('href')
 
-            price = header.find_element(By.CLASS_NAME, "advBPrice")
-            details = body.find_element(By.CLASS_NAME, "dvAdvDetalL")
+                price = header.find_element(By.CLASS_NAME, "advBPrice")
+                details = body.find_element(By.CLASS_NAME, "dvAdvDetalL")
 
-            location, date, contact = details.find_elements(
-                By.CLASS_NAME, 'dvAdvDetItmVal')
-            location_sanitized = location.text.replace(' ', '_')
+                location, date, contact = details.find_elements(
+                    By.CLASS_NAME, 'dvAdvDetItmVal')
+                location_sanitized = location.text.replace(' ', '_')
 
-            offer = (name.text, link, price.text, details.text,
-                     location.text, date.text, contact.text)
+                offer = (name.text, link, price.text, details.text,
+                         location.text, date.text, contact.text)
 
-            # for v in openfiles.values():
-            #     misc_file = v
-            #     break
-            is_sale = 'prodam' in name.text or 'prodej' in name.text.lower()
-            is_have_no_provision = 'bez realitky' in name.text.lower()
-            if location_sanitized in locations:
-                if is_have_no_provision:
-                    database.insert_offer('Bez_realitky', offer)
-                elif is_sale:
-                    database.insert_offer('Prodej', offer)
+                # for v in openfiles.values():
+                #     misc_file = v
+                #     break
+                name_cmp = name.text.lower()
 
+                is_sale = 'prodam' in name_cmp or 'prodej' in name_cmp
+                is_have_no_provision = 'bez realitky' in name_cmp
+                if location_sanitized in locations:
+                    if is_have_no_provision:
+                        database.insert_offer('Bez_realitky', offer)
+                    elif is_sale:
+                        database.insert_offer('Prodej', offer)
+
+                    else:
+                        # print(f'[{sanitize(name.text)}]({sanitize(link)})\n{sanitize(f'**{price.text}**')}\n{sanitize(location.text)}\n{
+                        #       sanitize(contact.text)}\n{sanitize('(' + date.text + ')')}', file=openfiles[location_sanitized], end=";;;\n")
+                        database.insert_offer(location_sanitized, offer)
                 else:
-                # print(f'[{sanitize(name.text)}]({sanitize(link)})\n{sanitize(f'**{price.text}**')}\n{sanitize(location.text)}\n{
-                #       sanitize(contact.text)}\n{sanitize('(' + date.text + ')')}', file=openfiles[location_sanitized], end=";;;\n")
-                    database.insert_offer(location_sanitized, offer)
-            else:
-                # print(f'[{sanitize(header.text)}]({sanitize(link)})\n{sanitize(f'**{price.text}**')}\n{sanitize(
-                #     location.text)}\n{sanitize(contact.text)}\n{sanitize('(' + date.text + ')')}', file=misc_file, end=";;;\n")
-                database.insert_offer('Vsechno', offer)
-        # (close(openfile) for openfile in openfiles)
-        database.commit()
-        # print(database.read_offers("Praha_1"))
+                    # print(f'[{sanitize(header.text)}]({sanitize(link)})\n{sanitize(f'**{price.text}**')}\n{sanitize(
+                    #     location.text)}\n{sanitize(contact.text)}\n{sanitize('(' + date.text + ')')}', file=misc_file, end=";;;\n")
+                    database.insert_offer('Vsechno', offer)
+            # (close(openfile) for openfile in openfiles)
+            database.commit()
+            # print(database.read_offers("Praha_1"))
+        except (e):
+            driver.quit()
+            print(f"Scrapping failed!\n{e}")
 
 
     finally:
         # Close the WebDriver
         driver.quit()
-        print('Scrapping is done')
+        print('Inforeality scrapping is done')

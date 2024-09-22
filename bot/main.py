@@ -15,10 +15,14 @@ os.chdir(cwd)
 os.makedirs(os.path.join(cwd, 'locations'), exist_ok=True)
 with open("token.txt", "r", encoding="utf8") as file:
     token = file.readline().strip()
-with open('creds.txt', 'r') as file:
-    credentials = file.readlines()
-    credentials[0] = credentials[0].strip()
-    credentials[1] = credentials[1].strip()
+
+
+def get_credentials(filename):
+    with open(os.path.abspath(filename), 'r') as file:
+        credentials = file.readlines()
+        credentials[0] = credentials[0].strip()
+        credentials[1] = credentials[1].strip()
+    return credentials
 
 
 async def main():
@@ -29,6 +33,18 @@ async def main():
     offerlist = {}
     printers = []
     database = scrapper.db.Database()
+
+    async def async_octopus_scrapper(locations, credentials, mock):
+        loop = asyncio.get_event_loop()
+        with ThreadPoolExecutor() as pool:
+            async def runner():
+                while True:
+                    scrapper.octopus.scrapper(
+                        database, None, credentials, mock)
+                    database.commit()
+                    await asyncio.sleep(30)
+                    # return
+            await loop.run_in_executor(pool, asyncio.run, runner())
 
     async def async_inforeality_scrapper(locations, credentials, mock):
         loop = asyncio.get_event_loop()
@@ -116,10 +132,12 @@ async def main():
         pass
         # print(a)
     # await async_inforeality_scrapper(locations, credentials, True)
-    asyncio.create_task(async_inforeality_scrapper(
-        locations, credentials, mock=False))
+    asyncio.create_task(async_octopus_scrapper(
+        None, get_credentials('octopus-creds.txt'), mock=False))
+    # asyncio.create_task(async_inforeality_scrapper(
+    #     locations, get_credentials('inforeality-creds.txt'), mock=False))
     asyncio.create_task(process_queue())
-    await bot.infinity_polling(allowed_updates=["message", "message_reaction"], request_timeout=900, timeout=None)
+    await bot.infinity_polling(allowed_updates=["message", "message_reaction"], timeout=None)
 
 if __name__ == "__main__":
     asyncio.run(main())
