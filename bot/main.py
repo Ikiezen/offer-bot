@@ -132,7 +132,6 @@ async def main():
                         f.write(serialized)
                 except FileNotFoundError:
                     pass
-                printers.remove(printer)
     @bot.message_handler(commands=['locate'])
     async def locate(m: telebot.types.Message):
         chat_info = await bot.get_chat(m.chat.id)
@@ -172,6 +171,13 @@ async def main():
                 for pickle_filename in location_storage.values():
                     with open(pickle_filename, 'rb') as pickle_file:
                         message_obj = pickle.load(pickle_file)
+                        location_printer = LocationPrinter(
+                            message_queue, bot, database, formatted_location)
+
+                        save_state(formatted_location)
+                        location_printer.start(message_obj)
+                        printers.append(location_printer)
+
 
         except FileNotFoundError:
             pass
