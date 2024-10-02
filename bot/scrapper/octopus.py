@@ -39,28 +39,41 @@ def scrapper(database, locations, credentials, mock=False):
             password.send_keys(credentials[1] + '\n')
 
         try:
-            WebDriverWait(driver, 20).until(EC.presence_of_element_located((
-                By.XPATH, '//*[@id="skeletHeader"]/nav/div/div/div'))).click()
-            WebDriverWait(driver, 20).until(EC.presence_of_element_located((
-                By.XPATH, '//*[@id="skeletHeader"]/nav/ul/li[5]/a'))).click()
+            a = WebDriverWait(driver, 10, poll_frequency=1).until(EC.element_to_be_clickable((
+                By.XPATH, '//*[@id="skeletHeader"]/nav/div/div/div')))
+            a.click()
+            b = WebDriverWait(driver, 10, poll_frequency=1).until(EC.element_to_be_clickable((
+                By.XPATH, '//*[@id="skeletHeader"]/nav/ul/li[5]/a')))
+            b.click()
+            driver.switch_to.frame('octopFrame100')
+            wait = WebDriverWait(driver, 30).until(
+                EC.presence_of_element_located((By.XPATH, '//*[@id="centralPage"]')), "Items not found!")
+            #TODO: THIS PIECE OF SHIT IS NOT DETECTED. FIX ASAP
+
+            offers = driver.find_elements(By.CSS_SELECTOR, '.advertHolder')
+
+            for offer in offers:
+                header = offer.find_element(
+                    by=By.CSS_SELECTOR, value='.header')
+                price = offer.find_element(
+                    by=By.CSS_SELECTOR, value='.price')
+                contact = offer.find_element(
+                    by=By.CSS_SELECTOR, value='.phone')
+                link = offer.find_element(
+                    by=By.CSS_SELECTOR, value='.sourceLink')
+                location = re.match(r'.*Praha [0-9]{2}', header.text)
 
 
-            wait = WebDriverWait(driver, 20).until(
-                EC.presence_of_element_located((By.CSS_SELECTOR, '.advertHolder')))
+                offer = (header.text, link.text, price.text, ' ',
+        location.text, date.text, contact.text)
 
-            headers = driver.find_elements(
-                by=By.CSS_SELECTOR, value='.advertHolder .text .header')
-            price = driver.find_elements(
-                by=By.CSS_SELECTOR, value='.advertHolder .text .price')
-            contact = driver.find_elements(
-                by=By.CSS_SELECTOR, value='.advertHolder .text .phone')
-            source = driver.find_elements(
-                by=By.CSS_SELECTOR, value='.advertHolder .text .sourceLink')
+
         except Exception as e:
-            print(f'Not scraped!\n\n{e}')
+            print(f'Not scraped!\n{e}')
+            # driver.quit()
     except Exception as e:
         print(e)
     finally:
-        if not mock:
-            driver.quit()
-        print('Octopus scrapping is done')
+        if not driver.session_id is None:
+            print('Octopus scrapping is done')
+            # driver.quit()

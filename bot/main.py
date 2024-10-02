@@ -108,19 +108,6 @@ async def main():
         token=token,  parse_mode='MarkdownV2', colorful_logs=True)
     print(f"Welcome, your token is: {token}")
 
-    t_ids = [2, 3, 8, 4, 9, 10, 11, 12, 13, 14]
-    chat_id = 2183077169
-
-    list_msg = [telebot.types.Message(message_id=0,
-                                      message_thread_id=t_id,
-                                      from_user=0,
-                                      date='',
-                                      chat=telebot.types.Chat(chat_id),
-                                      content_type='text',
-                                      options=[],
-                                      json_string='') for t_id in t_ids]
-
-
     @bot.message_handler(commands=["pomoc", "help"])
     async def help(m):
         async def reply(message):

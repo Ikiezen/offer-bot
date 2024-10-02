@@ -4,6 +4,7 @@ Scrapper for infoREALITY'''
 from random import randint
 from selenium import webdriver
 from selenium.webdriver.common.by import By
+from selenium.common.exceptions import TimeoutException
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support.ui import Select
 from selenium.webdriver.support import expected_conditions as EC
@@ -126,10 +127,11 @@ def scrapper(database, locations, credentials, mock=False):
             # (close(openfile) for openfile in openfiles)
             database.commit()
             # print(database.read_offers("Praha_1"))
-        except (e):
-            driver.quit()
+        # TODO:CHECK STABILITY OF THIS UPDATE
+        except Exception as e:
             print(f"Scrapping failed!\n{e}")
-
+        except TimeoutException as e:
+            print(f"Renderer has timed out!\n{e}")
 
     finally:
         # Close the WebDriver
