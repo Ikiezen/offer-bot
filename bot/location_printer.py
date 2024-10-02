@@ -12,7 +12,7 @@ class LocationPrinter:
             if not updates:
                 yield None
             else:
-                sanitizer = {ord('.'): '\\.', ord('+'): '\\+', ord('-'): '\\-',
+                sanitizer = {ord('.'): '\\.', ord('+'): '\\+', ord('-'): '\\-', ord('_'): '\\_',
                              ord(')'): '\\)', ord('('): '\\(', ord('!'): '\\!', ord('|'): '\\|'}
                 result = ""
                 for offer in updates:
