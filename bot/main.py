@@ -7,7 +7,9 @@ from location_printer import LocationPrinter
 import telebot
 import asyncio
 import os
-from scrapper import *
+from scrapper import inforeality
+from scrapper import octopus
+from scrapper import db
 import time
 import json
 import pickle
@@ -44,7 +46,7 @@ async def main():
     locations.append('Bez_realitky')
     offerlist = {}
     printers = []
-    database = scrapper.db.Database()
+    database = db.Database()
 
     def save_state(formatted_location, message):
         try:
@@ -76,7 +78,7 @@ async def main():
         with ThreadPoolExecutor() as pool:
             async def runner():
                 while True:
-                    scrapper.octopus.scrapper(
+                    octopus.scrapper(
                         database, None, credentials, mock)
                     database.commit()
                     await asyncio.sleep(refresh_rate)  # refresh rate
@@ -88,8 +90,8 @@ async def main():
         with ThreadPoolExecutor() as pool:
             async def runner():
                 while True:
-                    scrapper.inforeality.scrapper(
-                        database, locations, credentials, mock)
+                    inforeality.scrapper(
+                        database, locations, credentials, logger, mock)
                     database.commit()
                     await asyncio.sleep(refresh_rate)
                     # return
@@ -167,7 +169,7 @@ async def main():
         bot.send_message(message.chat.id, f"{
                          message.chat.username} řikal: {message.text}")
 
-    @bot.message_handler(command=["shutdown"])
+    @bot.message_handler(commands=["shutdown"])
     def shutdown(message):
         bot.reply_to(message, 'Bot is stopping...')
         bot.stop_poll()

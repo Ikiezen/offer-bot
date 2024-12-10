@@ -1,147 +1,133 @@
-'''scrapper/inforeality.py
-Scrapper for infoREALITY'''
-
 from random import randint
 from selenium import webdriver
 from selenium.webdriver.common.by import By
-from selenium.common.exceptions import TimeoutException
+from selenium.common.exceptions import TimeoutException, NoSuchElementException
 from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support.ui import Select
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.options import Options
 from . import db
 import time
 
+
 def sanitize(target: str) -> str:
+    """Sanitizes strings for safe usage."""
     sanitizer = {ord('.'): '\\.', ord('+'): '\\+', ord('-'): '\\-',
                  ord(')'): '\\)', ord('('): '\\(', ord('!'): '\\!', ord('|'): '\\|'}
     return target.translate(sanitizer)
 
-def scrapper(database, locations, credentials, mock=False):
-    chrome_options = Options()
 
-    # if not mock:
-    #     chrome_options.add_argument("--headless")  # Enable headless mode
-    # Disable GPU acceleration (needed for some OSes)
+def setup_driver(mock: bool) -> webdriver.Chrome:
+    """Sets up the Chrome WebDriver with necessary options."""
+    chrome_options = Options()
     chrome_options.add_argument("--disable-gpu")
-    # Set window size (optional)
     chrome_options.add_argument("--window-size=1920x1080")
     chrome_options.add_argument("--disable-dev-shm-usage")
     chrome_options.add_argument("--no-sandbox")
 
     driver = webdriver.Chrome(options=chrome_options)
+    driver.get(
+        "file:///home/ikiezen/Downloads/inforeality_mock.html" if mock else "https://www.irmonitor.cz/"
+    )
+    return driver
 
-    # Open the local HTML file
-    if not mock:
-        driver.get("https://www.irmonitor.cz/")
-    else:
-        driver.get("file:///home/ikiezen/Downloads/inforeality_mock.html")
 
+def login(driver, credentials, logger):
+    """Handles the login process."""
     try:
-        if not mock:
-            login = driver.find_element(By.XPATH, '//*[@id="inpLogin"]')
-            password = driver.find_element(By.XPATH, '//*[@id="inpPassword"]')
+        login_field = driver.find_element(By.XPATH, '//*[@id="inpLogin"]')
+        password_field = driver.find_element(
+            By.XPATH, '//*[@id="inpPassword"]')
+        login_field.send_keys(credentials[0])
+        password_field.send_keys(credentials[1] + '\n')
+    except NoSuchElementException as e:
+        logger.error("Login elements not found. Aborting.")
+        raise e
 
-            login.send_keys(credentials[0])
-            password.send_keys(credentials[1] + '\n')
 
+def apply_filters(driver, logger):
+    """Applies search filters on the website."""
+    try:
+        menu = WebDriverWait(driver, 3).until(EC.presence_of_element_located(
+            (By.XPATH, '//*[@id="mnNavlist"]/li[1]/a')))
+        menu.click()
+
+        # Apply additional filters (age range, price range, etc.)
+        age_filter = WebDriverWait(driver, 3).until(EC.presence_of_element_located(
+            (By.XPATH, '//*[@id="ctl00_MainContent_tbcFilter_tbpAdvanced_ddlAge_chosen"]')))
+        age_filter.click()
+
+        age_option = driver.find_element(
+            By.XPATH, '//*[@id="ctl00_MainContent_tbcFilter_tbpAdvanced_ddlAge_chosen"]/div/ul/li[2]')
+        age_option.click()
+
+        min_price = driver.find_element(
+            By.XPATH, '//*[@id="ctl00_MainContent_tbcFilter_tbpAdvanced_tbPriceFrom"]')
+        max_price = driver.find_element(
+            By.XPATH, '//*[@id="ctl00_MainContent_tbcFilter_tbpAdvanced_tbPriceTo"]')
+        min_price.send_keys('10000')
+        max_price.send_keys('1000000')
+
+        show_button = driver.find_element(
+            By.XPATH, '//*[@id="ctl00_MainContent_tbcFilter_tbpAdvanced_btShow"]')
+        show_button.click()
+
+    except TimeoutException as e:
+        logger.error("Timeout while applying filters.")
+        raise e
+
+
+def scrape_results(driver, database, locations, logger):
+    """Scrapes property data from the website."""
+    try:
+        WebDriverWait(driver, 10).until(EC.presence_of_element_located(
+            (By.CLASS_NAME, "dvAdvertismen")))
+
+        headers = driver.find_elements(By.CLASS_NAME, "advBHeader")
+        bodies = driver.find_elements(By.CLASS_NAME, "dvAdvBody")
+
+        for body, header in zip(bodies, headers):
             try:
-                prev = WebDriverWait(driver, 1).until(EC.presence_of_element_located((
-                    By.XPATH, '// *[@id = "ctl00_btShowLast"]')))
-                prev.click()
-            except:
-                a = WebDriverWait(driver, 1).until(EC.presence_of_element_located((
-                    By.XPATH, '//*[@id="mnNavlist"]/li[1]/a')))
-
-                a.click()
-
-                select_elem = WebDriverWait(driver, 3).until(EC.presence_of_element_located((
-                    By.XPATH, '//*[@id="ctl00_MainContent_tbcFilter_tbpAdvanced_ddlAge_chosen"]')))
-                select_elem.click()
-                option = driver.find_element(
-                    By.XPATH, '//*[@id="ctl00_MainContent_tbcFilter_tbpAdvanced_ddlAge_chosen"]/div/ul/li[2]')
-                option.click()
-
-                # is rental demand
-                # a = driver.find_element(
-                #     By.XPATH, '//*[@id = "ctl00_MainContent_tbcFilter_tbpAdvanced_ddlActivity"]/option[5]')
-                # a.click()
-
-                a = WebDriverWait(driver, 1).until(EC.presence_of_element_located((
-                    By.XPATH, '//*[@id="ctl00_MainContent_tbcFilter_tbpAdvanced_tbPriceFrom"]')))
-
-                a.send_keys('10000')
-
-                a = WebDriverWait(driver, 1).until(EC.presence_of_element_located(
-                    (By.XPATH, '//*[@id="ctl00$MainContent$tbcFilter$tbpAdvanced$tbPriceTo"]')))
-
-                a.send_keys('1000000')
-
-                a = WebDriverWait(driver, 1).until(EC.presence_of_element_located(
-                    (By.XPATH, '//*[@id="ctl00_MainContent_tbcFilter_tbpAdvanced_btShow"]')))
-
-
-                a.click()
-
-        # Wait for results to load
-        try:
-            results = WebDriverWait(driver, 10).until(
-                # Replace with actual class name
-                EC.presence_of_element_located(
-                    (By.CLASS_NAME, "dvAdvertismen"))
-            )
-
-            # database = db.Database()
-            # openfiles = {location: open(
-            #     f'locations/inforeality_{location}.txt', 'w') for location in locations}
-            # Extract and print results
-            for body, header in zip(driver.find_elements(By.CLASS_NAME, "dvAdvBody"), driver.find_elements(By.CLASS_NAME, "advBHeader")):
-                name = header.find_element(By.CLASS_NAME, "advName")
-                link = name.get_attribute('href')
-
-                price = header.find_element(By.CLASS_NAME, "advBPrice")
+                name_elem = header.find_element(By.CLASS_NAME, "advName")
+                link = name_elem.get_attribute('href')
+                price_elem = header.find_element(By.CLASS_NAME, "advBPrice")
                 details = body.find_element(By.CLASS_NAME, "dvAdvDetalL")
 
-                location, date, contact = details.find_elements(
+                location_elem, date_elem, contact_elem = details.find_elements(
                     By.CLASS_NAME, 'dvAdvDetItmVal')
-                location_sanitized = location.text.replace(' ', '_')
 
-                offer = (name.text, link, price.text, details.text,
-                         location.text, date.text, contact.text)
+                location_sanitized = location_elem.text.replace(' ', '_')
+                offer = (
+                    name_elem.text, link, price_elem.text, details.text,
+                    location_elem.text, date_elem.text, contact_elem.text
+                )
 
-                # for v in openfiles.values():
-                #     misc_file = v
-                #     break
-                name_cmp = name.text.lower()
-
+                name_cmp = name_elem.text.lower()
                 is_sale = 'prodam' in name_cmp or 'prodej' in name_cmp
                 is_have_no_provision = 'bez realitky' in name_cmp
-                if location_sanitized in locations:
-                    if is_have_no_provision:
-                        database.insert_offer('Bez_realitky', offer)
-                    elif is_sale:
-                        database.insert_offer('Prodej', offer)
 
-                    else:
-                        # print(f'[{sanitize(name.text)}]({sanitize(link)})\n{sanitize(f'**{price.text}**')}\n{sanitize(location.text)}\n{
-                        #       sanitize(contact.text)}\n{sanitize('(' + date.text + ')')}', file=openfiles[location_sanitized], end=";;;\n")
-                        database.insert_offer(location_sanitized, offer)
-                else:
-                    # print(f'[{sanitize(header.text)}]({sanitize(link)})\n{sanitize(f'**{price.text}**')}\n{sanitize(
-                    #     location.text)}\n{sanitize(contact.text)}\n{sanitize('(' + date.text + ')')}', file=misc_file, end=";;;\n")
-                    database.insert_offer('Vsechno', offer)
-            # (close(openfile) for openfile in openfiles)
-            database.commit()
-            # print(database.read_offers("Praha_1"))
-        # TODO:CHECK STABILITY OF THIS UPDATE
-        except Exception as e:
-            logger.warning(f"Scrapping failed!\n{e}")
-        except TimeoutException as e:
-            logger.warning(f"Renderer has timed out!\n{e}")
-        finally:
-            logger.error(f'An error while scraping had occured! {e}')
+                category = 'Bez_realitky' if is_have_no_provision else 'Prodej' if is_sale else location_sanitized
+                database.insert_offer(category, offer)
 
+            except Exception as e:
+                logger.warning(f"Failed to process an advertisement: {e}")
+
+        database.commit()
+
+    except TimeoutException as e:
+        logger.error("Timeout while loading results.")
+        raise e
+
+
+def scrapper(database, locations, credentials, logger, mock=False):
+    """Main function to scrape data."""
+    driver = setup_driver(mock)
+    try:
+        if not mock:
+            login(driver, credentials, logger)
+            apply_filters(driver, logger)
+        scrape_results(driver, database, locations, logger)
+    except Exception as e:
+        logger.error(f"An error occurred during scraping: {e}")
     finally:
-        # Close the WebDriver
         driver.quit()
-        logger.info('Inforeality scrapping is done')
+        logger.info('Scraping completed.')
