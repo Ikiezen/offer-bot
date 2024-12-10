@@ -1,16 +1,21 @@
 """Test bot in Telegram (@dev_ikibot)"""
-
+import typing
+import typing_extensions
 from telebot.async_telebot import AsyncTeleBot
 from concurrent.futures import ThreadPoolExecutor
 from location_printer import LocationPrinter
 import telebot
 import asyncio
 import os
-import scrapper
-import scrapper.db
+from scrapper import *
 import time
 import json
 import pickle
+import logging
+
+global logger
+
+logger = logging.getLogger(__name__)
 
 cwd = os.path.dirname(os.path.abspath(__file__))
 os.chdir(cwd)
@@ -30,6 +35,10 @@ def get_credentials(filename):
 
 async def main():
     """Entry point"""
+
+    logging.basicConfig(
+        filename=f'marimaxi-{str(time.time()).replace('.', '_')}-.log', level=logging.INFO)
+
     locations = [f'Praha_{i}' for i in range(1, 11)]
     locations.append('Prodej')
     locations.append('Bez_realitky')
@@ -110,7 +119,7 @@ async def main():
 
     bot = AsyncTeleBot(
         token=token,  parse_mode='MarkdownV2', colorful_logs=True)
-    print(f"Welcome, your token is: {token}")
+    logger.info(f"Welcome, your token is: {token}")
 
     @bot.message_handler(commands=["pomoc", "help"])
     async def help(m):
@@ -120,7 +129,7 @@ async def main():
 
     @bot.message_handler(commands=["stop"])
     async def stop(m: telebot.types.Message):
-        print(printers)
+        logger.info(printers)
 
         for printer in printers:
             if printer.check_then_stop(m):
@@ -144,8 +153,7 @@ async def main():
         formatted_location = " ".join(
             telegram_message.text.split()[1:]).replace(' ', '_').capitalize()
         if formatted_location in locations:
-            # offer_at_location = offerlist[formatted_location]
-            # offer_at_location = await scan_for_new(formatted_location)
+
             location_printer = LocationPrinter(
                 message_queue, bot, database, formatted_location)
 
@@ -208,5 +216,4 @@ if __name__ == "__main__":
     try:
         asyncio.run(main())
     except Exception as e:
-        print(e)
-        #TODO CHANGE LOGGING TO LOGGING LIBRARY INSTEAD OF PRINT
+        logger.warning(e)

@@ -20,8 +20,8 @@ def sanitize(target: str) -> str:
 def scrapper(database, locations, credentials, mock=False):
     chrome_options = Options()
 
-    if not mock:
-        chrome_options.add_argument("--headless")  # Enable headless mode
+    # if not mock:
+    #     chrome_options.add_argument("--headless")  # Enable headless mode
     # Disable GPU acceleration (needed for some OSes)
     chrome_options.add_argument("--disable-gpu")
     # Set window size (optional)
@@ -73,7 +73,13 @@ def scrapper(database, locations, credentials, mock=False):
                 a.send_keys('10000')
 
                 a = WebDriverWait(driver, 1).until(EC.presence_of_element_located(
+                    (By.XPATH, '//*[@id="ctl00$MainContent$tbcFilter$tbpAdvanced$tbPriceTo"]')))
+
+                a.send_keys('1000000')
+
+                a = WebDriverWait(driver, 1).until(EC.presence_of_element_located(
                     (By.XPATH, '//*[@id="ctl00_MainContent_tbcFilter_tbpAdvanced_btShow"]')))
+
 
                 a.click()
 
@@ -129,11 +135,13 @@ def scrapper(database, locations, credentials, mock=False):
             # print(database.read_offers("Praha_1"))
         # TODO:CHECK STABILITY OF THIS UPDATE
         except Exception as e:
-            print(f"Scrapping failed!\n{e}")
+            logger.warning(f"Scrapping failed!\n{e}")
         except TimeoutException as e:
-            print(f"Renderer has timed out!\n{e}")
+            logger.warning(f"Renderer has timed out!\n{e}")
+        finally:
+            logger.error(f'An error while scraping had occured! {e}')
 
     finally:
         # Close the WebDriver
         driver.quit()
-        print('Inforeality scrapping is done')
+        logger.info('Inforeality scrapping is done')
