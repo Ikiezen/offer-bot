@@ -23,7 +23,8 @@ def setup_driver(mock: bool) -> webdriver.Chrome:
     chrome_options.add_argument("--window-size=1920x1080")
     chrome_options.add_argument("--disable-dev-shm-usage")
     chrome_options.add_argument("--no-sandbox")
-
+    if not mock:
+        chrome_options.add_argument("--headless")
     driver = webdriver.Chrome(options=chrome_options)
     driver.get(
         "file:///home/ikiezen/Downloads/inforeality_mock.html" if mock else "https://www.irmonitor.cz/"

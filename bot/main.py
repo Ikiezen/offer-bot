@@ -39,7 +39,7 @@ async def main():
     """Entry point"""
 
     logging.basicConfig(
-        filename=f'marimaxi-{str(time.time()).replace('.', '_')}-.log', level=logging.INFO)
+        filename=f'../logs/marimaxi-{str(time.time()).replace('.', '_')}-.log', level=logging.INFO)
 
     locations = [f'Praha_{i}' for i in range(1, 11)]
     locations.append('Prodej')
