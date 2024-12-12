@@ -22,6 +22,7 @@ logger = logging.getLogger(__name__)
 cwd = os.path.dirname(os.path.abspath(__file__))
 os.chdir(cwd)
 os.makedirs(os.path.join(cwd, 'locations'), exist_ok=True)
+os.makedirs(os.path.join(cwd, 'logs'), exist_ok=True)
 locations_filepath = 'locations/active_locations_printers.json'
 with open("token.txt", "r", encoding="utf8") as file:
     token = file.readline().strip()
@@ -39,7 +40,7 @@ async def main():
     """Entry point"""
 
     logging.basicConfig(
-        filename=f'../logs/marimaxi-{str(time.time()).replace('.', '_')}-.log', level=logging.INFO)
+        filename=f'./logs/marimaxi-{str(time.time()).replace('.', '_')}.log', level=logging.INFO)
 
     locations = [f'Praha_{i}' for i in range(1, 11)]
     locations.append('Prodej')
