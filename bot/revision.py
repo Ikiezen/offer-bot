@@ -76,7 +76,7 @@ class Database:
                             offer[1]} in {sanitized_location}.")
                 self.cursor.execute(f'''
                     UPDATE {sanitized_location}
-                    SET header = ?, price = ?, details = ?, location = ?, date = ?, contact = ?, status = 'not sent'
+                    SET header = ?, price = ?, details = ?, location = ?, date = ?, contact = ?, status = 'sent'
                     WHERE link = ?
                 ''', (offer[0], offer[2], offer[3], offer[4], offer[5], offer[6], offer[1]))
             else:
