@@ -185,7 +185,7 @@ class Scraper:
                         f'Praha_{i}' for i in range(1, 11)]
 
                     category = 'Prodej' if is_sale else ('Bez_realitky' if is_bezrealitky else
-                                                         'Vsechno' if not any(district in location_elem.text for district in valid_praha_districts)
+                                                         'Vsechno' if not any(district in location_elem.text.replace(' ', '_') for district in valid_praha_districts)
                                                          else location_elem.text.replace(' ', '_'))
                     database.insert_offer(category, offer)
 
@@ -204,7 +204,7 @@ class LocationPrinter:
         self.bot = bot
         self.is_active = False
 
-    async def start(self, chat_id):
+    async def start(self, chat_id, thread_id):
         self.is_active = True
 
         while self.is_active:
@@ -218,12 +218,13 @@ class LocationPrinter:
                 message = f'''[{sanitize(offer[0])}]({sanitize(offer[1])})\nCena: {sanitize(offer[2])}\n{
                     sanitize(offer[3])}\n{sanitize(offer[5])}'''
                 try:
-                    await self.bot.send_message(chat_id=chat_id, text=message)
+                    await self.bot.send_message(chat_id=chat_id, text=message, message_thread_id=thread_id)
                     self.database.update_status(
                         self.location, offer[1], 'sent')
-                except:
-                    pass
+                except Exception as e:
+                    logger.error(f"Failed to send message: {e}")
             await asyncio.sleep(10)
+
 
     def stop(self):
         self.is_active = False
@@ -235,6 +236,22 @@ class TelegramBot:
         self.database = database
         self.printers = {}
 
+    def save_printers(self):
+        try:
+            location_storage = {}
+            for location, data in self.printers.items():
+                pickle_filename = f'locations/{location}-printer.pkl'
+                with open(pickle_filename, 'wb') as pickle_file:
+                    pickle.dump(
+                        {'chat_id': data['chat_id'], 'thread_id': data['thread_id']}, pickle_file)
+                location_storage[location] = pickle_filename
+
+            with open(LOCATIONS_FILE, 'w') as f:
+                json.dump(location_storage, f)
+        except Exception as e:
+            logger.warning(f"Failed to save printers: {e}")
+
+
     def load_printers(self):
         try:
             if os.path.exists(LOCATIONS_FILE):
@@ -243,27 +260,13 @@ class TelegramBot:
 
                 for formatted_location, pickle_filename in location_storage.items():
                     with open(pickle_filename, 'rb') as pickle_file:
-                        message_obj = pickle.load(pickle_file)
+                        data = pickle.load(pickle_file)
                         printer = LocationPrinter(
                             formatted_location, self.database, self.bot)
                         self.printers[formatted_location] = {
-                            'printer': printer, 'chat_id': message_obj}
+                            'printer': printer, 'chat_id': data['chat_id'], 'thread_id': data['thread_id']}
         except Exception as e:
             logger.warning(f"Failed to load printers: {e}")
-
-    def save_printers(self):
-        try:
-            location_storage = {}
-            for location, data in self.printers.items():
-                pickle_filename = f'locations/{location}-printer.pkl'
-                with open(pickle_filename, 'wb') as pickle_file:
-                    pickle.dump({'chat_id': data['chat_id']}, pickle_file)
-                location_storage[location] = pickle_filename
-
-            with open(LOCATIONS_FILE, 'w') as f:
-                json.dump(location_storage, f)
-        except Exception as e:
-            logger.warning(f"Failed to save printers: {e}")
 
     async def start(self):
         @ self.bot.message_handler(commands=['help'])
@@ -274,34 +277,39 @@ class TelegramBot:
         async def locate_handler(message):
             location = "_".join(message.text.split()[1:]).capitalize()
             location = ''.join(e for e in location if e.isalnum() or e == '_')
+            thread_id = message.message_thread_id  # Capture the thread ID
+
             if location in self.printers:
-                await self.bot.reply_to(message, f"A printer for {sanitize(location)} is already active")
+                await self.bot.reply_to(message, f"A printer for {sanitize(location)} is already active", message_thread_id=thread_id)
                 return
 
             printer = LocationPrinter(location, self.database, self.bot)
             self.printers[location] = {
-                'printer': printer, 'chat_id': message.chat.id}
+                'printer': printer, 'chat_id': message.chat.id, 'thread_id': thread_id}
             self.save_printers()
-            await self.bot.reply_to(message, f"Started monitoring {sanitize(location)}")
-            asyncio.create_task(printer.start(message.chat.id))
+            await self.bot.reply_to(message, f"Started monitoring {sanitize(location)}", message_thread_id=thread_id)
+            asyncio.create_task(printer.start(message.chat.id, thread_id))
+
 
         @ self.bot.message_handler(commands=['stop'])
         async def stop_handler(message):
             location = "_".join(message.text.split()[1:]).capitalize()
             location = ''.join(e for e in location if e.isalnum() or e == '_')
+            thread_id = message.message_thread_id  # Capture the thread ID
+
             if location not in self.printers:
-                await self.bot.reply_to(message, f"No active printer for {sanitize(location)}")
+                await self.bot.reply_to(message, f"No active printer for {sanitize(location)}", message_thread_id=thread_id)
                 return
 
             self.printers[location]['printer'].stop()
             del self.printers[location]
             self.save_printers()
-            await self.bot.reply_to(message, f"Stopped monitoring {sanitize(location)}")
-
+            await self.bot.reply_to(message, f"Stopped monitoring {sanitize(location)}", message_thread_id=thread_id)
         self.load_printers()
 
         for location, data in self.printers.items():
-            asyncio.create_task(data['printer'].start(data['chat_id']))
+            asyncio.create_task(data['printer'].start(
+                data['chat_id'], data['thread_id']))
 
         await self.bot.infinity_polling()
 
