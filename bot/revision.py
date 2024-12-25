@@ -13,8 +13,8 @@ from concurrent.futures import ThreadPoolExecutor
 import json
 import pickle
 from dotenv import load_dotenv
+from pathlib import Path
 import re
-
 # Load configuration from .env
 load_dotenv()
 TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
@@ -22,6 +22,10 @@ DB_PATH = os.getenv('DB_PATH', 'locations/location.db')
 LOG_PATH = os.getenv('LOG_PATH', './logs')
 LOCATIONS_FILE = os.getenv(
     'LOCATIONS_FILE', 'locations/active_locations_printers.json')
+
+if not (os.path.isfile(os.path.join(LOG_PATH, 'scraper.log')) and os.path.isfile(LOCATIONS_FILE)):
+    Path(os.path.join(LOG_PATH, 'scraper.log')).touch()
+    Path(LOCATIONS_FILE).touch()
 
 logging.basicConfig(level=logging.INFO, filename=f'{
                     LOG_PATH}/scraper.log', format='%(asctime)s - %(levelname)s - %(message)s')
