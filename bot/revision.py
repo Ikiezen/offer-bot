@@ -1,3 +1,4 @@
+import argparse
 import asyncio
 import logging
 import os
@@ -14,7 +15,16 @@ import json
 import pickle
 from dotenv import load_dotenv
 from pathlib import Path
+import signal
 import re
+
+# Parse command-line arguments
+parser = argparse.ArgumentParser(
+    description="Run the Telegram bot and scraper.")
+parser.add_argument("--debug", action="store_true",
+                    help="Enable debug-level logging")
+args = parser.parse_args()
+
 # Load configuration from .env
 load_dotenv()
 TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
@@ -27,10 +37,11 @@ if not (os.path.isfile(os.path.join(LOG_PATH, 'scraper.log')) and os.path.isfile
     Path(os.path.join(LOG_PATH, 'scraper.log')).touch()
     Path(LOCATIONS_FILE).touch()
 
-logging.basicConfig(level=logging.INFO, filename=f'{
-                    LOG_PATH}/scraper.log', format='%(asctime)s - %(levelname)s - %(message)s')
+# Set logging level based on the --debug flag
+log_level = logging.DEBUG if args.debug else logging.INFO
+logging.basicConfig(level=log_level, filename=f'{LOG_PATH}/scraper.log',
+                    format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
-
 
 def sanitize(message):
     # Escape reserved characters
@@ -318,6 +329,20 @@ class TelegramBot:
         await self.bot.infinity_polling()
 
 
+class GracefulExit:
+    def __init__(self):
+        self._stop = asyncio.Event()
+        signal.signal(signal.SIGINT, self._handle_exit)
+        signal.signal(signal.SIGTERM, self._handle_exit)
+
+    def _handle_exit(self, signum, frame):
+        logger.info(f"Received termination signal ({
+                    signum}). Exiting gracefully.")
+        self._stop.set()
+
+    async def wait(self):
+        await self._stop.wait()
+
 async def periodic_scraping(scraper, database):
     credentials = {"username": os.getenv(
         "IRM_USERNAME"), "password": os.getenv("IRM_PASSWORD")}
@@ -337,18 +362,36 @@ async def periodic_scraping(scraper, database):
 
 
 async def main():
+    # Initialize graceful exit handler
+    graceful_exit = GracefulExit()
+
     database = Database(DB_PATH)
     scraper = Scraper(driver_path=os.getenv('CHROME_DRIVER_PATH'))
-
     bot = TelegramBot(TOKEN, database)
-    asyncio.create_task(bot.start())
-    asyncio.create_task(periodic_scraping(scraper, database))
 
-    await asyncio.sleep(60 * 60 * 24)  # Keep running for 24 hours
-    database.close()
+    # Run bot and scraper tasks
+    bot_task = asyncio.create_task(bot.start())
+    scraper_task = asyncio.create_task(periodic_scraping(scraper, database))
+
+    try:
+        # Wait for the shutdown signal
+        await graceful_exit.wait()
+    except Exception as e:
+        logger.error(f"Error in main loop: {e}")
+    finally:
+        logger.info("Shutting down tasks...")
+        bot_task.cancel()
+        scraper_task.cancel()
+
+        # Wait for tasks to finish
+        await asyncio.gather(bot_task, scraper_task, return_exceptions=True)
+        database.close()
+        logger.info("Graceful shutdown complete.")
 
 if __name__ == "__main__":
     try:
         asyncio.run(main())
+    except KeyboardInterrupt:
+        logger.info("KeyboardInterrupt received. Exiting...")
     except Exception as e:
         logger.error(f"Critical error: {e}")
