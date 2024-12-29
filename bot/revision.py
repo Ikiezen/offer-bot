@@ -30,11 +30,12 @@ load_dotenv()
 TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
 DB_PATH = os.getenv('DB_PATH', 'locations/location.db')
 LOG_PATH = os.getenv('LOG_PATH', './logs')
+LOG_FILE = os.path.join(LOG_PATH, 'scraper.log')
 LOCATIONS_FILE = os.getenv(
     'LOCATIONS_FILE', 'locations/active_locations_printers.json')
 
-if not (os.path.isfile(os.path.join(LOG_PATH, 'scraper.log')) and os.path.isfile(LOCATIONS_FILE)):
-    Path(os.path.join(LOG_PATH, 'scraper.log')).touch()
+if not (os.path.isfile(LOG_FILE) and os.path.isfile(LOCATIONS_FILE)):
+    Path(LOG_FILE).touch()
     Path(LOCATIONS_FILE).touch()
 
 # Set logging level based on the --debug flag
@@ -255,7 +256,8 @@ class TelegramBot:
         try:
             location_storage = {}
             for location, data in self.printers.items():
-                pickle_filename = f'locations/{location}-printer.pkl'
+                pickle_filename = f'{
+                    Path(LOCATIONS_FILE).parent.absolute()}/{location}-printer.pkl'
                 with open(pickle_filename, 'wb') as pickle_file:
                     pickle.dump(
                         {'chat_id': data['chat_id'], 'thread_id': data['thread_id']}, pickle_file)
