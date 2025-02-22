@@ -3,13 +3,6 @@ import asyncio
 import logging
 import os
 import sqlite3
-from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.common.exceptions import TimeoutException, NoSuchElementException
-from telebot.async_telebot import AsyncTeleBot
 from concurrent.futures import ThreadPoolExecutor
 import json
 import pickle
@@ -17,6 +10,14 @@ from dotenv import load_dotenv
 from pathlib import Path
 import signal
 import re
+
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.common.exceptions import TimeoutException, NoSuchElementException
+from telebot.async_telebot import AsyncTeleBot
 
 # Parse command-line arguments
 parser = argparse.ArgumentParser(
@@ -28,12 +29,18 @@ args = parser.parse_args()
 # Load configuration from .env
 load_dotenv()
 TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
-DB_PATH = os.getenv('DB_PATH', 'locations/location.db')
-LOG_PATH = os.getenv('LOG_PATH', './logs')
-LOG_FILE = os.path.join(LOG_PATH, 'scraper.log')
-LOCATIONS_FILE = os.getenv(
-    'LOCATIONS_FILE', 'locations/active_locations_printers.json')
 
+LOCATIONS_PATH = os.getenv('DB_PATH', 'locations')
+LOCATIONS_FILE = os.path.join(LOCATIONS_PATH, 'printers.json')
+DB_FILE = os.path.join(LOCATIONS_PATH, 'location.db')
+
+LOG_PATH = os.getenv('LOG_PATH', 'logs')
+LOG_FILE = os.path.join(LOG_PATH, 'scraper.log')
+try:
+    os.mkdir(LOG_PATH)
+    os.mkdir(LOCATIONS_PATH)
+except FileExistsError as e:
+    print(e)
 if not (os.path.isfile(LOG_FILE) and os.path.isfile(LOCATIONS_FILE)):
     Path(LOG_FILE).touch()
     Path(LOCATIONS_FILE).touch()
@@ -59,7 +66,7 @@ class Database:
 
     def initialize_database(self):
         locations = [f'Praha_{i}' for i in range(
-            1, 11)] + ['Vsechno', 'Prodej', 'Bez_realitky']
+            1, 11)] + ['Vsechno', 'Prodej']
         for location in locations:
             self.cursor.execute(f'''
                 CREATE TABLE IF NOT EXISTS {location} (
@@ -88,12 +95,10 @@ class Database:
 
             if existing_entry:
                 # Update existing record
-                logger.info(f"Updating existing entry for {
-                            offer[1]} in {sanitized_location}.")
+                logger.info(f"Updating existing entry for {offer[1]} in {sanitized_location}." )
                 self.cursor.execute(f'''
                     UPDATE {sanitized_location}
-                    SET header = ?, price = ?, details = ?, location = ?, date = ?, contact = ?, status = 'sent'
-                    WHERE link = ?
+                    SET header = ?, price = ?, details = ?, location = ?, date = ?, contact = ? WHERE link = ?
                 ''', (offer[0], offer[2], offer[3], offer[4], offer[5], offer[6], offer[1]))
             else:
                 # Insert new record
@@ -104,8 +109,7 @@ class Database:
 
             self.connection.commit()
         except sqlite3.OperationalError as e:
-            logger.error(f"Database operation failed for {
-                sanitized_location}: {e}")
+            logger.error(f"Database operation failed for {sanitized_location}: {e}")
         except sqlite3.IntegrityError as e:
             logger.error(f"Integrity error in table {sanitized_location}: {e}")
 
@@ -203,7 +207,9 @@ class Scraper:
                     category = 'Prodej' if is_sale else ('Bez_realitky' if is_bezrealitky else
                                                          'Vsechno' if not any(district in location_elem.text.replace(' ', '_') for district in valid_praha_districts)
                                                          else location_elem.text.replace(' ', '_'))
-                    database.insert_offer(category, offer)
+                    
+                    if not is_bezrealitky:
+                        database.insert_offer(category, offer)
 
                 except Exception as e:
                     logger.warning(f"Failed to process advertisement: {e}")
@@ -304,6 +310,9 @@ class TelegramBot:
             self.printers[location] = {
                 'printer': printer, 'chat_id': message.chat.id, 'thread_id': thread_id}
             self.save_printers()
+            if location == 'Bez_realitky':
+                await self.bot.reply_to(message, f"Offers on location 'bez realitky' are not supported", message_thread_id=thread_id)
+                return
             await self.bot.reply_to(message, f"Started monitoring {sanitize(location)}", message_thread_id=thread_id)
             asyncio.create_task(printer.start(message.chat.id, thread_id))
 
@@ -364,18 +373,20 @@ async def periodic_scraping(scraper, database):
 
 
 async def main():
-    # Initialize graceful exit handler
-    graceful_exit = GracefulExit()
-
-    database = Database(DB_PATH)
-    scraper = Scraper(driver_path=os.getenv('CHROME_DRIVER_PATH'))
-    bot = TelegramBot(TOKEN, database)
-
-    # Run bot and scraper tasks
-    bot_task = asyncio.create_task(bot.start())
-    scraper_task = asyncio.create_task(periodic_scraping(scraper, database))
 
     try:
+        # Initialize graceful exit handler
+        graceful_exit = GracefulExit()
+
+        database = Database(DB_FILE)
+        scraper = Scraper(driver_path=os.getenv('CHROME_DRIVER_PATH'))
+        bot = TelegramBot(TOKEN, database)
+
+        # Run bot and scraper tasks
+        bot_task = asyncio.create_task(bot.start())
+        scraper_task = asyncio.create_task(periodic_scraping(scraper, database))
+
+
         # Wait for the shutdown signal
         await graceful_exit.wait()
     except Exception as e:
