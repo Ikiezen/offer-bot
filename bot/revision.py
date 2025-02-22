@@ -133,6 +133,9 @@ class Scraper:
         self.driver_path = driver_path
 
     def setup_driver(self, headless=True):
+        CACHE_SIZE=209715200 # 200 MiB
+
+
         options = Options()
         options.add_argument("--disable-gpu")
         options.add_argument("--window-size=1920x1080")
@@ -140,6 +143,7 @@ class Scraper:
         options.add_argument("--disable-extensions")
         options.add_argument("--no-sandbox")
         options.add_argument("--remote-debugging-port=9222")
+        options.add_argument(f"--disk-cache-size={CACHE_SIZE}")
         if headless:
             options.add_argument("--headless")
         return webdriver.Chrome(options=options)
