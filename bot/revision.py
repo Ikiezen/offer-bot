@@ -1,12 +1,11 @@
+'''One-file scrapper'''
 import argparse
 import asyncio
 import logging
 import os
 import sqlite3
-from concurrent.futures import ThreadPoolExecutor
 import json
 import pickle
-from dotenv import load_dotenv
 from pathlib import Path
 import signal
 import re
@@ -18,6 +17,8 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.common.exceptions import TimeoutException, NoSuchElementException
 from telebot.async_telebot import AsyncTeleBot
+
+from dotenv import load_dotenv
 
 # Parse command-line arguments
 parser = argparse.ArgumentParser(
@@ -36,6 +37,10 @@ DB_FILE = os.path.join(LOCATIONS_PATH, 'location.db')
 
 LOG_PATH = os.getenv('LOG_PATH', 'logs')
 LOG_FILE = os.path.join(LOG_PATH, 'scraper.log')
+
+PERIODIC_SCRAPER_TIMER = os.getenv('PERIODIC_SCRAPER_TIMER', '300')
+
+
 try:
     os.mkdir(LOG_PATH)
     os.mkdir(LOCATIONS_PATH)
@@ -46,13 +51,14 @@ if not (os.path.isfile(LOG_FILE) and os.path.isfile(LOCATIONS_FILE)):
     Path(LOCATIONS_FILE).touch()
 
 # Set logging level based on the --debug flag
-log_level = logging.DEBUG if args.debug else logging.INFO
-logging.basicConfig(level=log_level, filename=f'{LOG_PATH}/scraper.log',
+LOG_LEVEL = logging.DEBUG if args.debug else logging.INFO
+logging.basicConfig(level=LOG_LEVEL, filename=f'{LOG_FILE}',
                     format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
+
 def sanitize(message):
-    # Escape reserved characters
+    '''Escape reserved characters'''
     sanitized_message = re.sub(
         r'([+\-*_\[\]()`|{}.!?<>])', r'\\\1', message)
     return sanitized_message
@@ -95,7 +101,8 @@ class Database:
 
             if existing_entry:
                 # Update existing record
-                logger.info(f"Updating existing entry for {offer[1]} in {sanitized_location}." )
+                logger.info(
+                    f"Updating existing entry for {offer[1]} in {sanitized_location}.")
                 self.cursor.execute(f'''
                     UPDATE {sanitized_location}
                     SET header = ?, price = ?, details = ?, location = ?, date = ?, contact = ? WHERE link = ?
@@ -109,7 +116,8 @@ class Database:
 
             self.connection.commit()
         except sqlite3.OperationalError as e:
-            logger.error(f"Database operation failed for {sanitized_location}: {e}")
+            logger.error(
+                f"Database operation failed for {sanitized_location}: {e}")
         except sqlite3.IntegrityError as e:
             logger.error(f"Integrity error in table {sanitized_location}: {e}")
 
@@ -133,8 +141,7 @@ class Scraper:
         self.driver_path = driver_path
 
     def setup_driver(self, headless=True):
-        CACHE_SIZE=209715200 # 200 MiB
-
+        CACHE_SIZE = 209715200  # 200 MiB
 
         options = Options()
         options.add_argument("--disable-gpu")
@@ -211,7 +218,7 @@ class Scraper:
                     category = 'Prodej' if is_sale else ('Bez_realitky' if is_bezrealitky else
                                                          'Vsechno' if not any(district in location_elem.text.replace(' ', '_') for district in valid_praha_districts)
                                                          else location_elem.text.replace(' ', '_'))
-                    
+
                     if not is_bezrealitky:
                         database.insert_offer(category, offer)
 
@@ -251,7 +258,6 @@ class LocationPrinter:
                     logger.error(f"Failed to send message: {e}")
             await asyncio.sleep(10)
 
-
     def stop(self):
         self.is_active = False
 
@@ -278,7 +284,6 @@ class TelegramBot:
         except Exception as e:
             logger.warning(f"Failed to save printers: {e}")
 
-
     def load_printers(self):
         try:
             if os.path.exists(LOCATIONS_FILE):
@@ -296,11 +301,11 @@ class TelegramBot:
             logger.warning(f"Failed to load printers: {e}")
 
     async def start(self):
-        @ self.bot.message_handler(commands=['help'])
+        @self.bot.message_handler(commands=['help'])
         async def help_handler(message):
             await self.bot.reply_to(message, "Use /locate location to search for properties")
 
-        @ self.bot.message_handler(commands=['locate'])
+        @self.bot.message_handler(commands=['locate'])
         async def locate_handler(message):
             location = "_".join(message.text.split()[1:]).capitalize()
             location = ''.join(e for e in location if e.isalnum() or e == '_')
@@ -320,8 +325,7 @@ class TelegramBot:
             await self.bot.reply_to(message, f"Started monitoring {sanitize(location)}", message_thread_id=thread_id)
             asyncio.create_task(printer.start(message.chat.id, thread_id))
 
-
-        @ self.bot.message_handler(commands=['stop'])
+        @self.bot.message_handler(commands=['stop'])
         async def stop_handler(message):
             location = "_".join(message.text.split()[1:]).capitalize()
             location = ''.join(e for e in location if e.isalnum() or e == '_')
@@ -358,6 +362,7 @@ class GracefulExit:
     async def wait(self):
         await self._stop.wait()
 
+
 async def periodic_scraping(scraper, database):
     credentials = {"username": os.getenv(
         "IRM_USERNAME"), "password": os.getenv("IRM_PASSWORD")}
@@ -373,7 +378,7 @@ async def periodic_scraping(scraper, database):
             logger.error(f"Error during scraping: {e}")
         finally:
             driver.quit()
-        await asyncio.sleep(60)
+        await asyncio.sleep(int(PERIODIC_SCRAPER_TIMER)) # PERIODIC_SCRAPER_TIMER in s
 
 
 async def main():
@@ -388,8 +393,8 @@ async def main():
 
         # Run bot and scraper tasks
         bot_task = asyncio.create_task(bot.start())
-        scraper_task = asyncio.create_task(periodic_scraping(scraper, database))
-
+        scraper_task = asyncio.create_task(
+            periodic_scraping(scraper, database))
 
         # Wait for the shutdown signal
         await graceful_exit.wait()
