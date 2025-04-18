@@ -272,8 +272,7 @@ class TelegramBot:
         try:
             location_storage = {}
             for location, data in self.printers.items():
-                pickle_filename = f'{
-                    Path(LOCATIONS_FILE).parent.absolute()}/{location}-printer.pkl'
+                pickle_filename = f'{Path(LOCATIONS_FILE).parent.absolute()}/{location}-printer.pkl'
                 with open(pickle_filename, 'wb') as pickle_file:
                     pickle.dump(
                         {'chat_id': data['chat_id'], 'thread_id': data['thread_id']}, pickle_file)
@@ -355,8 +354,7 @@ class GracefulExit:
         signal.signal(signal.SIGTERM, self._handle_exit)
 
     def _handle_exit(self, signum, frame):
-        logger.info(f"Received termination signal ({
-                    signum}). Exiting gracefully.")
+        logger.info(f"Received termination signal ({signum}). Exiting gracefully.")
         self._stop.set()
 
     async def wait(self):
