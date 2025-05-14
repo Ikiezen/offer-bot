@@ -60,7 +60,7 @@ logger = logging.getLogger(__name__)
 def sanitize(message):
     '''Escape reserved characters'''
     sanitized_message = re.sub(
-        r'([+\-*_\[\]()`|{}.!?<>])', r'\\\1', message)
+        r'([+\-*_\[\]()`|{}.!?<>=])', r'\\\1', message)
     return sanitized_message
 
 

@@ -8,3 +8,5 @@ bin
 lib64
 pyvenv.cfg
 bot/creds.txt
+bot/.env
+bot/logs
