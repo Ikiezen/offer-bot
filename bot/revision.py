@@ -72,7 +72,7 @@ class Database:
 
     def initialize_database(self):
         locations = [f'Praha_{i}' for i in range(
-            1, 11)] + ['Vsechno', 'Prodej']
+            1, 23)] + ['Vsechno', 'Prodej']
         for location in locations:
             self.cursor.execute(f'''
                 CREATE TABLE IF NOT EXISTS {location} (
@@ -213,7 +213,7 @@ class Scraper:
 
                     # Define valid Praha districts
                     valid_praha_districts = [
-                        f'Praha_{i}' for i in range(1, 11)]
+                        f'Praha_{i}' for i in range(1, 22)]
 
                     category = 'Prodej' if is_sale else ('Bez_realitky' if is_bezrealitky else
                                                          'Vsechno' if not any(district in location_elem.text.replace(' ', '_') for district in valid_praha_districts)
