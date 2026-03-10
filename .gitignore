@@ -1,12 +1,4 @@
-bot/locations/
-bot/creds.txt
-__pycache__
-.vscode
-.mypy_cache
-lib
-bin
-lib64
-pyvenv.cfg
-bot/creds.txt
-bot/.env
-bot/logs
+./locations/
+./logs/
+
+./venv/*
