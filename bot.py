@@ -1,5 +1,6 @@
 '''One-file scrapper'''
 
+import sys, traceback
 from bs4 import BeautifulSoup
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -90,6 +91,7 @@ SOURCE_EMOJIS = {
     "idnes": "📰",
     "sbazar": "🛍️",
     "sreality": "🔴",
+    "IRM" : "🗞️",
 }
 
 
@@ -138,13 +140,13 @@ class Database:
                 CREATE TABLE IF NOT EXISTS {location} (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     header TEXT NOT NULL,
-                    link TEXT UNIQUE,
                     price TEXT,
                     details TEXT,
                     location TEXT,
                     date DATETIME DEFAULT CURRENT_TIMESTAMP,
                     contact TEXT,
                     source TEXT,
+                    link TEXT UNIQUE,
                     status TEXT DEFAULT 'not sent'
                 );
             """)
@@ -168,7 +170,7 @@ class Database:
                 f"""
                 SELECT id FROM {sanitized_location} WHERE link = ?
             """,
-                (offer[1],),
+            (offer["link"],)
             )
             existing_entry = self.cursor.fetchone()
 
@@ -178,24 +180,15 @@ class Database:
                     UPDATE {sanitized_location}
                     SET header = ?, price = ?, details = ?, location = ?, date = ?, contact = ?, source = ? WHERE link = ?
                 """,
-                    (
-                        offer[0],
-                        offer[2],
-                        offer[3],
-                        offer[4],
-                        offer[5],
-                        offer[6],
-                        offer[7],
-                        offer[1],
-                    ),
+                (*offer.values(),)
                 )
             else:
                 self.cursor.execute(
                     f"""
-                    INSERT INTO {sanitized_location} (header, link, price, details, location, date, contact, source, status)
+                    INSERT INTO {sanitized_location} (header, price, details,location, date, contact, source,link, status)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                    (*offer, "not sent"),
+                (*offer.values(),"not sent")
                 )
 
             self.connection.commit()
@@ -209,10 +202,12 @@ class Database:
             )
 
     def fetch_offers(self, location, status="not sent", limit=1):
-        query = f"""SELECT header, link, price, location, date, contact, source, status FROM {
-            location} WHERE status=? LIMIT ?"""
+        query = f"""SELECT header, price, details,location, date, contact, source,link,status FROM {location} WHERE status=? LIMIT ?"""
         self.cursor.execute(query, (status, limit))
-        return self.cursor.fetchall()
+        if self.cursor.fetchone is not None:
+            df = pd.DataFrame(self.cursor.fetchall(),columns = ["header", "price", "details","location", "date", "contact", "source","link","status" ] )
+            return df
+        return
 
     def update_status(self, location, link, status):
         self.cursor.execute(
@@ -259,7 +254,7 @@ def map_row_to_db_offer(row: pd.Series) -> tuple:
     raw_date = (
         row.get("published_at") or row.get("date") or row.get("created_at")
     )
-    date_str = (
+    date = (
         str(raw_date) if pd.notna(raw_date) else datetime.now().isoformat()
     )
 
@@ -276,7 +271,18 @@ def map_row_to_db_offer(row: pd.Series) -> tuple:
     )
 
     # Return exactly 8 items to match INSERT statement
-    return (header, link, price, details, location, date_str, contact, source)
+
+    offer = {
+    "header" : header,
+    "price" : price,
+    "details" :  details,
+    "location" : location,
+    "date" : date,
+    "contact" : contact,
+    "source" : source,
+    "link" : link,
+    }
+    return offer
 
 
 def extract_target_tables(row: pd.Series) -> list[str]:
@@ -410,7 +416,6 @@ class IRM_Scraper:
 
     def scrape(self, driver, database, locations):
         try:
-            breakpoint()
             WebDriverWait(driver, 10).until(
                 EC.presence_of_element_located((By.CLASS_NAME, "dvAdvertismen")))
             headers = driver.find_elements(By.CLASS_NAME, "advBHeader")
@@ -426,10 +431,16 @@ class IRM_Scraper:
 
                     location_elem, date_elem, contact_elem = details.find_elements(
                         By.CLASS_NAME, 'dvAdvDetItmVal')
-                    offer = (
-                        name_elem.text, link, price_elem.text, details.text,
-                        location_elem.text, date_elem.text, contact_elem.text
-                    )
+                    offer = {
+                            "header" : name_elem.text,
+                            "price" : price_elem.text,
+                            "details" :  details.text,
+                            "location" : location_elem.text,
+                            "date" : date_elem.text,
+                            "contact" : contact_elem.text,
+                            "source" : "IRM",
+                            "link" : link,
+                            }
 
                     is_sale = 'prodam' in name_elem.text.lower() or 'prodej' in name_elem.text.lower()
                     is_bezrealitky = 'bez realitky' in name_elem.text.lower()
@@ -447,6 +458,8 @@ class IRM_Scraper:
 
                 except Exception as e:
                     logger.warning(f"Failed to process advertisement: {e}")
+                    traceback.print_exc(file=sys.stdout)
+
 
         except TimeoutException as e:
             logger.error("Timeout while loading results")
@@ -466,18 +479,25 @@ class LocationPrinter:
         while self.is_active:
             offers = self.database.fetch_offers(
                 self.location, status='not sent', limit=5)
-            if not offers:
+            if offers.empty:
                 await asyncio.sleep(10)
                 continue
 
-            for offer in offers:
-                message = f'''[{sanitize(offer[0])}]({sanitize(offer[1])})\nCena: {sanitize(offer[2])}\n{
-                    sanitize(offer[3])}\n{sanitize(offer[5])}'''
+            for _, offer in offers.iterrows():
+                
+                message=f'''
+[{sanitize(offer["header"])}]({sanitize(offer["link"])})\n
+Cena: {sanitize(offer["price"])}\n
+{sanitize(offer["location"])}\n
+{sanitize("---")}\n
+{sanitize(offer["contact"])}\n
+                ''' 
                 try:
                     await self.bot.send_message(chat_id=chat_id, text=message, message_thread_id=thread_id)
                     self.database.update_status(
-                        self.location, offer[1], 'sent')
+                        self.location, offer["link"], 'sent')
                 except Exception as e:
+                    traceback.print_exc(file=sys.stdout)
                     logger.error(f"Failed to send message: {e}")
             await asyncio.sleep(10)
 
@@ -531,6 +551,9 @@ class TelegramBot:
         async def locate_handler(message):
             location = "_".join(message.text.split()[1:]).capitalize()
             location = ''.join(e for e in location if e.isalnum() or e == '_')
+            if not location:
+                await self.bot.reply_to(message, "Use /locate location to search for properties")
+                return
             thread_id = message.message_thread_id  # Capture the thread ID
 
             if location in self.printers:
@@ -590,6 +613,100 @@ async def periodic_scraping(scraper, database):
     while True:
         logger.info("Starting periodic scraping")
         try:
+            logger.info(
+                f"[*] Starting Real Estate Aggregator Pipeline ({GLOBAL_FILTER.price_min}-{GLOBAL_FILTER.price_max} CZK, {GLOBAL_FILTER.region})..."
+            )
+
+            # 1. Bazoš
+            try:
+                df_bazos = scrape_bazos_flats(filters=GLOBAL_FILTER, page=0)
+                logger.info(f"[+] Bazoš: {len(df_bazos)} rows")
+            except Exception as e:
+                logger.error(f"[-] Bazoš failed: {e}")
+                df_bazos = pd.DataFrame()
+
+            # 2. Domonaut
+            # try:
+            #     df_domonaut = fetch_and_parse_offers(filters=GLOBAL_FILTER, limit=50)
+            #     logger.info(f"[+] Domonaut: {len(df_domonaut)} rows")
+            # except Exception as e:
+            #     logger.error(f"[-] Domonaut failed: {e}")
+            #     df_domonaut = pd.DataFrame()
+            df_domonaut = pd.DataFrame()
+
+            # 3. Octopus
+            try:
+                login_resp = octopus_login(OCTOPUS_USERNAME, OCTOPUS_PASSWORD, BASE_URL)
+                df_octopus = parse_xml_login_response(login_resp.text)
+                logger.info(f"[+] Octopus: {len(df_octopus)} rows")
+            except Exception as e:
+                logger.error(f"[-] Octopus failed: {e}")
+                df_octopus = pd.DataFrame()
+
+            # 4. iDNES Reality
+            try:
+                df_idnes = scrape_idnes(filters=GLOBAL_FILTER)
+                logger.info(f"[+] iDNES: {len(df_idnes)} rows")
+            except Exception as e:
+                logger.error(f"[-] iDNES failed: {e}")
+                df_idnes = pd.DataFrame()
+
+            # 5. Sbazar
+            try:
+                df_sbazar = scrape_sbazar_nextjs(filters=GLOBAL_FILTER)
+                logger.info(f"[+] Sbazar: {len(df_sbazar)} rows")
+            except Exception as e:
+                logger.error(f"[-] Sbazar failed: {e}")
+                df_sbazar = pd.DataFrame()
+
+            # 6. Sreality
+            try:
+                df_sreality = fetch_sreality_dataframe()
+                if not df_sreality.empty and "price_czk" in df_sreality.columns:
+                    df_sreality = df_sreality.rename(columns={"price_czk": "price"})
+                logger.info(f"[+] Sreality: {len(df_sreality)} rows")
+            except Exception as e:
+                logger.error(f"[-] Sreality failed: {e}")
+                df_sreality = pd.DataFrame()
+
+            # Combine all 6 scrapers
+            sources = [
+                df_bazos,
+                df_domonaut,
+                df_octopus,
+                df_idnes,
+                df_sbazar,
+                df_sreality,
+            ]
+            all_listings = pd.concat(sources, ignore_index=True)
+
+            # Clean & Deduplicate by URL
+            all_listings = all_listings[
+                all_listings["url"].notna() & (all_listings["url"] != "")
+            ].copy()
+            all_listings["normalized_url"] = all_listings["url"].apply(normalize_url)
+
+            clean_listings = all_listings.drop_duplicates(
+                subset=["normalized_url"], keep="first"
+            ).reset_index(drop=True)
+
+            # Post-filter by price & region bounds
+            final_listings = apply_global_filters(clean_listings, GLOBAL_FILTER)
+
+            logger.info(
+                f"\n================ Aggregated Pipeline Summary ================\n"
+                f"Total raw items fetched : {len(all_listings)}\n"
+                f"Total unique URLs       : {len(clean_listings)}\n"
+                f"Final filtered listings : {len(final_listings)}\n"
+                f"Breakdown by source     :\n"
+                f"{final_listings['source'].value_counts()}\n"
+                f"==============================================================\n"
+            )
+
+            # Sync to SQLite Database
+            sync_dataframe_to_db(database, final_listings)
+
+            # IRM SCRAPER
             driver = scraper.setup_driver()
             scraper.login(driver, credentials)
             scraper.apply_filters(driver)
@@ -597,6 +714,7 @@ async def periodic_scraping(scraper, database):
             scraper.scrape(driver, database, locations=None)
         except Exception as e:
             logger.error(f"Error during scraping: {e}")
+            traceback.print_exc(file=sys.stdout)
         finally:
             driver.quit()
         await asyncio.sleep(int(PERIODIC_SCRAPER_TIMER)) # PERIODIC_SCRAPER_TIMER in s
@@ -616,99 +734,6 @@ async def main():
         bot_task = asyncio.create_task(bot.start())
         scraper_task = asyncio.create_task(
             periodic_scraping(irm_scraper, database))
-            
-        logger.info(
-            f"[*] Starting Real Estate Aggregator Pipeline ({GLOBAL_FILTER.price_min}-{GLOBAL_FILTER.price_max} CZK, {GLOBAL_FILTER.region})..."
-        )
-
-        # 1. Bazoš
-        try:
-            df_bazos = scrape_bazos_flats(filters=GLOBAL_FILTER, page=0)
-            logger.info(f"[+] Bazoš: {len(df_bazos)} rows")
-        except Exception as e:
-            logger.error(f"[-] Bazoš failed: {e}")
-            df_bazos = pd.DataFrame()
-
-        # 2. Domonaut
-        # try:
-        #     df_domonaut = fetch_and_parse_offers(filters=GLOBAL_FILTER, limit=50)
-        #     logger.info(f"[+] Domonaut: {len(df_domonaut)} rows")
-        # except Exception as e:
-        #     logger.error(f"[-] Domonaut failed: {e}")
-        #     df_domonaut = pd.DataFrame()
-        df_domonaut = pd.DataFrame()
-
-        # 3. Octopus
-        try:
-            login_resp = octopus_login(OCTOPUS_USERNAME, OCTOPUS_PASSWORD, BASE_URL)
-            df_octopus = parse_xml_login_response(login_resp.text)
-            logger.info(f"[+] Octopus: {len(df_octopus)} rows")
-        except Exception as e:
-            logger.error(f"[-] Octopus failed: {e}")
-            df_octopus = pd.DataFrame()
-
-        # 4. iDNES Reality
-        try:
-            df_idnes = scrape_idnes(filters=GLOBAL_FILTER)
-            logger.info(f"[+] iDNES: {len(df_idnes)} rows")
-        except Exception as e:
-            logger.error(f"[-] iDNES failed: {e}")
-            df_idnes = pd.DataFrame()
-
-        # 5. Sbazar
-        try:
-            df_sbazar = scrape_sbazar_nextjs(filters=GLOBAL_FILTER)
-            logger.info(f"[+] Sbazar: {len(df_sbazar)} rows")
-        except Exception as e:
-            logger.error(f"[-] Sbazar failed: {e}")
-            df_sbazar = pd.DataFrame()
-
-        # 6. Sreality
-        try:
-            df_sreality = fetch_sreality_dataframe()
-            if not df_sreality.empty and "price_czk" in df_sreality.columns:
-                df_sreality = df_sreality.rename(columns={"price_czk": "price"})
-            logger.info(f"[+] Sreality: {len(df_sreality)} rows")
-        except Exception as e:
-            logger.error(f"[-] Sreality failed: {e}")
-            df_sreality = pd.DataFrame()
-
-        # Combine all 6 scrapers
-        sources = [
-            df_bazos,
-            df_domonaut,
-            df_octopus,
-            df_idnes,
-            df_sbazar,
-            df_sreality,
-        ]
-        all_listings = pd.concat(sources, ignore_index=True)
-
-        # Clean & Deduplicate by URL
-        all_listings = all_listings[
-            all_listings["url"].notna() & (all_listings["url"] != "")
-        ].copy()
-        all_listings["normalized_url"] = all_listings["url"].apply(normalize_url)
-
-        clean_listings = all_listings.drop_duplicates(
-            subset=["normalized_url"], keep="first"
-        ).reset_index(drop=True)
-
-        # Post-filter by price & region bounds
-        final_listings = apply_global_filters(clean_listings, GLOBAL_FILTER)
-
-        logger.info(
-            f"\n================ Aggregated Pipeline Summary ================\n"
-            f"Total raw items fetched : {len(all_listings)}\n"
-            f"Total unique URLs       : {len(clean_listings)}\n"
-            f"Final filtered listings : {len(final_listings)}\n"
-            f"Breakdown by source     :\n"
-            f"{final_listings['source'].value_counts()}\n"
-            f"==============================================================\n"
-        )
-
-        # Sync to SQLite Database
-        sync_dataframe_to_db(database, final_listings)
 
         # Wait for the shutdown signal
         await graceful_exit.wait()
@@ -725,8 +750,10 @@ async def main():
         logger.info("Graceful shutdown complete.")
 
 if __name__ == "__main__":
+
     try:
         asyncio.run(main())
+        
     except KeyboardInterrupt:
         logger.info("KeyboardInterrupt received. Exiting...")
     except Exception as e:
