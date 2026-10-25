@@ -147,71 +147,140 @@ class Database:
                     contact TEXT,
                     source TEXT,
                     link TEXT UNIQUE,
+                    content_hash TEXT UNIQUE,
                     status TEXT DEFAULT 'not sent'
                 );
             """)
 
-            # Migration: Ensure existing database tables have the source column
+            # Migrations: Ensure columns exist on legacy tables
             self.cursor.execute(f"PRAGMA table_info({location})")
             columns = [col[1] for col in self.cursor.fetchall()]
+
             if "source" not in columns:
                 self.cursor.execute(
                     f"ALTER TABLE {location} ADD COLUMN source TEXT"
                 )
+            if "content_hash" not in columns:
+                self.cursor.execute(
+                    f"ALTER TABLE {location} ADD COLUMN content_hash TEXT"
+                )
 
         self.connection.commit()
 
-    def insert_offer(self, location, offer):
+    def get_existing_hashes(self, location) -> set:
+        """Loads all existing content hashes into memory for O(1) duplicate checks."""
         sanitized_location = "".join(
             e if e.isalnum() or e == "_" else "_" for e in location
         )
         try:
             self.cursor.execute(
-                f"""
-                SELECT id FROM {sanitized_location} WHERE link = ?
-            """,
-            (offer["link"],)
+                f"SELECT content_hash FROM {sanitized_location} WHERE content_hash IS NOT NULL"
             )
-            existing_entry = self.cursor.fetchone()
+            return {row[0] for row in self.cursor.fetchall()}
+        except sqlite3.OperationalError:
+            return set()
 
-            if existing_entry:
-                self.cursor.execute(
-                    f"""
-                    UPDATE {sanitized_location}
-                    SET header = ?, price = ?, details = ?, location = ?, date = ?, contact = ?, source = ? WHERE link = ?
-                """,
-                (*offer.values(),)
-                )
-            else:
-                self.cursor.execute(
-                    f"""
-                    INSERT INTO {sanitized_location} (header, price, details,location, date, contact, source,link, status)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (*offer.values(),"not sent")
-                )
+    def insert_offer(self, location, offer: dict):
+            sanitized_location = "".join(
+                e if e.isalnum() or e == "_" else "_" for e in location
+            )
+            content_hash = offer.get("content_hash")
 
-            self.connection.commit()
-        except sqlite3.OperationalError as e:
-            logger.error(
-                f"Database operation failed for {sanitized_location}: {e}"
-            )
-        except sqlite3.IntegrityError as e:
-            logger.error(
-                f"Integrity error in table {sanitized_location}: {e}"
-            )
+            try:
+                # 1. Check if this exact URL already exists (for updates)
+                self.cursor.execute(
+                    f"SELECT id FROM {sanitized_location} WHERE link = ?",
+                    (offer["link"],),
+                )
+                existing_by_link = self.cursor.fetchone()
+
+                if existing_by_link:
+                    # Update existing URL record
+                    self.cursor.execute(
+                        f"""
+                        UPDATE {sanitized_location}
+                        SET header = ?, price = ?, details = ?, location = ?, date = ?, contact = ?, source = ?, content_hash = ?
+                        WHERE link = ?
+                    """,
+                        (
+                            offer["header"],
+                            offer["price"],
+                            offer["details"],
+                            offer["location"],
+                            offer["date"],
+                            offer["contact"],
+                            offer["source"],
+                            content_hash,
+                            offer["link"],
+                        ),
+                    )
+                else:
+                    # 2. Check if a cross-platform duplicate with this content_hash already exists under a DIFFERENT link
+                    if content_hash:
+                        self.cursor.execute(
+                            f"SELECT id FROM {sanitized_location} WHERE content_hash = ?",
+                            (content_hash,),
+                        )
+                        existing_by_hash = self.cursor.fetchone()
+                        if existing_by_hash:
+                            # Cross-platform duplicate detected in DB — skip insertion entirely
+                            return
+
+                    # Insert new unique listing
+                    self.cursor.execute(
+                        f"""
+                        INSERT OR IGNORE INTO {sanitized_location} (header, price, details, location, date, contact, source, link, content_hash, status)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'not sent')
+                    """,
+                        (
+                            offer["header"],
+                            offer["price"],
+                            offer["details"],
+                            offer["location"],
+                            offer["date"],
+                            offer["contact"],
+                            offer["source"],
+                            offer["link"],
+                            content_hash,
+                        ),
+                    )
+
+                self.connection.commit()
+            except sqlite3.OperationalError as e:
+                logger.error(
+                    f"Database operation failed for {sanitized_location}: {e}"
+                )
+            except sqlite3.IntegrityError as e:
+                logger.error(
+                    f"Integrity error in table {sanitized_location}: {e}"
+                )
 
     def fetch_offers(self, location, status="not sent", limit=1):
-        query = f"""SELECT header, price, details,location, date, contact, source,link,status FROM {location} WHERE status=? LIMIT ?"""
+        query = f"""SELECT header, price, details, location, date, contact, source,link, content_hash, status FROM {location} WHERE status=? LIMIT ?"""
         self.cursor.execute(query, (status, limit))
-        if self.cursor.fetchone is not None:
-            df = pd.DataFrame(self.cursor.fetchall(),columns = ["header", "price", "details","location", "date", "contact", "source","link","status" ] )
-            return df
-        return
+        rows = self.cursor.fetchall()
+        if rows:
+            return pd.DataFrame(
+                rows,
+                columns=[
+                    "header",
+                    "price",
+                    "details",
+                    "location",
+                    "date",
+                    "contact",
+                    "source",
+                    "link",
+                    "content_hash",
+                    "status",
+                ],
+            )
+        return None
 
     def update_status(self, location, link, status):
         self.cursor.execute(
-            f"UPDATE {location} SET status=? WHERE link=?", (status, link))
+            f"UPDATE {location} SET status=? WHERE link=?", (status, link)
+        )
         self.connection.commit()
 
     def close(self):
@@ -221,14 +290,114 @@ class Database:
 # ---------------------------------------------------------------------------
 # Database Mapper & Table Router
 # ---------------------------------------------------------------------------
+def generate_content_hash(row_or_location, details=None) -> str:
+    if isinstance(row_or_location, str):
+        # Legacy string fallback
+        loc_clean = (
+            unicodedata.normalize("NFKD", row_or_location)
+            .encode("ascii", "ignore")
+            .decode("utf-8")
+            .lower()
+        )
+        desc_clean = (
+            unicodedata.normalize("NFKD", str(details or ""))
+            .encode("ascii", "ignore")
+            .decode("utf-8")
+            .lower()
+        )
+        return hashlib.md5(
+            f"{re.sub(r'[^a-z0-9]', '', loc_clean)}_{re.sub(r'[^a-z0-9]', '', desc_clean)}".encode(
+                "utf-8"
+            )
+        ).hexdigest()
 
-def map_row_to_db_offer(row: pd.Series) -> tuple:
+    row = row_or_location
+
+    # 1. Price Bucketing (nearest 10,000 Kč)
+    raw_price = safe_int(row.get("price")) or 0
+    price_bucket = round(raw_price / 10000) * 10000
+
+    # 2. Area Bucketing (nearest 10 m²)
+    area = safe_int(row.get("area_m2")) or 0
+    if area == 0:
+        text_blob = f"{row.get('title', '')} {row.get('description', '')} {row.get('locality', '')} {row.get('details', '')}"
+        area_match = re.search(r"(\d+)\s*(?:m2|m²)", text_blob, re.IGNORECASE)
+        if area_match:
+            area = int(area_match.group(1))
+    area_bucket = round(area / 10) * 10
+
+    # 3. Layout normalization
+    layout_raw = str(row.get("layout") or row.get("title") or "").lower()
+    layout_match = re.search(r"(\d\+?[kk|1-4])", layout_raw)
+    layout_str = (
+        re.sub(r"[^\w]", "", layout_match.group(1)) if layout_match else "unknown"
+    )
+
+    # 4. Smart Location Normalization (strips "praha", district numbers, sorts tokens)
+    loc_raw = str(
+        row.get("locality")
+        or row.get("address")
+        or row.get("district")
+        or row.get("location")
+        or ""
+    )
+    loc_norm = (
+        unicodedata.normalize("NFKD", loc_raw)
+        .encode("ascii", "ignore")
+        .decode("utf-8")
+        .lower()
+    )
+    loc_cleaned = re.sub(r"[^a-z0-9\s]", " ", loc_norm)
+    tokens = loc_cleaned.split()
+
+    # Filter out city and district noise words
+    stopwords = {
+        "praha",
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7",
+        "8",
+        "9",
+        "10",
+        "11",
+        "12",
+        "13",
+        "14",
+        "15",
+        "16",
+        "17",
+        "18",
+        "19",
+        "20",
+        "21",
+        "22",
+        "cze",
+        "czech",
+    }
+    filtered_tokens = [t for t in tokens if t not in stopwords]
+    filtered_tokens.sort()  # Order independence ("Nové Město Příčná" == "Příčná Nové Město")
+    loc_key = "".join(filtered_tokens)
+
+    signature = f"{price_bucket}_{area_bucket}_{layout_str}_{loc_key}"
+    
+    # Fallback if everything else is empty so SQLite UNIQUE constraint never sees a blank hash
+    if not loc_key and price_bucket == 0 and area_bucket == 0:
+        fallback_blob = f"{row.get('title', '')} {row.get('description', '')}"
+        return hashlib.md5(fallback_blob.encode("utf-8")).hexdigest()
+
+    return hashlib.md5(signature.encode("utf-8")).hexdigest()
+
+
+def map_row_to_db_offer(row: pd.Series) -> dict:
     source = str(row.get("source") or "unknown").lower()
     emoji_flag = SOURCE_EMOJIS.get(source, "🏠")
 
     raw_title = str(row.get("title") or "Neznámý název").strip()
     header = f"{emoji_flag} {raw_title}"
-
     link = str(row.get("url") or "").strip()
 
     price_val = row.get("price")
@@ -244,6 +413,8 @@ def map_row_to_db_offer(row: pd.Series) -> tuple:
         details_parts.append(f"Plocha: {row.get('area_m2')} m²")
     if pd.notna(row.get("description")):
         details_parts.append(str(row.get("description")))
+    elif pd.notna(row.get("body")):
+        details_parts.append(str(row.get("body")))
 
     details = " | ".join(details_parts) if details_parts else "Bez detailů"
 
@@ -270,19 +441,22 @@ def map_row_to_db_offer(row: pd.Series) -> tuple:
         " | ".join(contact_parts) if contact_parts else "Není k dispozici"
     )
 
-    # Return exactly 8 items to match INSERT statement
+    # Use the pre-calculated hash from the DataFrame row, with a safe fallback
+    content_hash = row.get("content_hash") or generate_content_hash(
+        location, details
+    )
 
-    offer = {
-    "header" : header,
-    "price" : price,
-    "details" :  details,
-    "location" : location,
-    "date" : date,
-    "contact" : contact,
-    "source" : source,
-    "link" : link,
+    return {
+        "header": header,
+        "price": price,
+        "details": details,
+        "location": location,
+        "date": date,
+        "contact": contact,
+        "source": source,
+        "link": link,
+        "content_hash": content_hash,
     }
-    return offer
 
 
 def extract_target_tables(row: pd.Series) -> list[str]:
@@ -327,8 +501,13 @@ def sync_dataframe_to_db(db_manager: Database, df: pd.DataFrame):
         logger.warning("[!] DataFrame is empty, skipping DB sync.")
         return
 
+    df = df.copy()
+    df["content_hash"] = df.apply(generate_content_hash, axis=1)
+    df_unique = df.drop_duplicates(subset=["content_hash"], keep="first")
+
     inserted_count = 0
-    for _, row in df.iterrows():
+
+    for _, row in df_unique.iterrows():
         url = row.get("url")
         if not url or pd.isna(url):
             continue
@@ -337,14 +516,63 @@ def sync_dataframe_to_db(db_manager: Database, df: pd.DataFrame):
         target_tables = extract_target_tables(row)
 
         for table_name in target_tables:
+            # Let database handle duplicate prevention via INSERT OR IGNORE
             db_manager.insert_offer(table_name, offer)
             inserted_count += 1
 
     logger.info(
-        f"[+] DB Sync complete: Processed {len(df)} listings across"
-        f" {inserted_count} table insertions."
+        f"[+] DB Sync complete: Attempted insertion for {inserted_count}"
+        " records (duplicates automatically dropped by SQLite constraints)."
     )
 
+def apply_anti_broker_filters(df: pd.DataFrame) -> pd.DataFrame:
+    if df.empty:
+        return df
+
+    filtered_df = df.copy()
+
+    def get_col(col_name):
+        if col_name in filtered_df.columns:
+            return filtered_df[col_name].fillna("")
+        return pd.Series("", index=filtered_df.index)
+
+    text_blob = (
+        get_col("title")
+        + " "
+        + get_col("description")
+        + " "
+        + get_col("details")
+        + " "
+        + get_col("locality")
+    ).str.lower()
+
+    text_blob_normalized = (
+        text_blob.apply(lambda val: unicodedata.normalize("NFKD", val))
+        .str.encode("ascii", "ignore")
+        .str.decode("utf-8")
+    )
+
+    # Broker/Agency spam markers to strictly drop
+    broker_keywords = [
+        "rk nevolat",
+        "realitky nevolat",
+        "rk nekontaktovat",
+        "realitni kancelare nevolat",
+        "rk prosim nevolat",
+        "spekulanty ne",
+        # Add common real estate agency terms if they leak in
+        "realitni kancelar",
+        "provize rk",
+        "sluzby rk",
+    ]
+
+    broker_pattern = "|".join(re.escape(k) for k in broker_keywords)
+    has_broker_spam = text_blob_normalized.str.contains(broker_pattern, regex=True, na=False)
+
+    # Keep everything EXCEPT what triggers the broker spam blacklist
+    final_filtered = filtered_df[~has_broker_spam].reset_index(drop=True)
+    
+    return final_filtered
 
 def apply_global_filters(
     df: pd.DataFrame, filters: SearchFilter = GLOBAL_FILTER
@@ -431,6 +659,10 @@ class IRM_Scraper:
 
                     location_elem, date_elem, contact_elem = details.find_elements(
                         By.CLASS_NAME, 'dvAdvDetItmVal')
+                    
+                    # Compute content hash for IRM items so SQLite's UNIQUE constraint catches duplicates
+                    content_hash = generate_content_hash(location_elem.text, details.text)
+
                     offer = {
                             "header" : name_elem.text,
                             "price" : price_elem.text,
@@ -440,6 +672,7 @@ class IRM_Scraper:
                             "contact" : contact_elem.text,
                             "source" : "IRM",
                             "link" : link,
+                            "content_hash": content_hash,
                             }
 
                     is_sale = 'prodam' in name_elem.text.lower() or 'prodej' in name_elem.text.lower()
@@ -479,7 +712,7 @@ class LocationPrinter:
         while self.is_active:
             offers = self.database.fetch_offers(
                 self.location, status='not sent', limit=5)
-            if offers.empty:
+            if offers is None or offers.empty:
                 await asyncio.sleep(10)
                 continue
 
@@ -692,6 +925,8 @@ async def periodic_scraping(scraper, database):
 
             # Post-filter by price & region bounds
             final_listings = apply_global_filters(clean_listings, GLOBAL_FILTER)
+            # Post-filter by keywords (no RK)
+            final_listings = apply_anti_broker_filters(final_listings)
 
             logger.info(
                 f"\n================ Aggregated Pipeline Summary ================\n"
