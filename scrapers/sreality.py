@@ -10,12 +10,6 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from dotenv import load_dotenv
 from pathlib import Path
-from selenium.common.exceptions import TimeoutException, NoSuchElementException
-from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.support.ui import WebDriverWait
 from telebot.async_telebot import AsyncTeleBot
 from urllib.parse import quote, urlparse
 import argparse
@@ -32,7 +26,7 @@ import requests
 
 
 def get_sreality_build_id(session: requests.Session) -> str:
-    """Extracts buildId from HTML matching: grep -oP '"buildId":"\K[^"]+'"""
+    """Extracts buildId from HTML matching grep"""
     url = "https://www.sreality.cz/hledani/pronajem/byty/praha"
     headers = {"User-Agent": "Mozilla/5.0"}
     res = session.get(url, headers=headers)
@@ -126,6 +120,11 @@ def fetch_sreality_dataframe() -> pd.DataFrame:
     # 4. Parse records into flat dicts
     parsed_items = []
     for item in raw_results:
+        whitelist = [ None, 8152 ]
+        premiseId = item.get("premiseId")
+        if premiseId not in whitelist:
+            continue
+
         item_id = item.get("id")
         loc = item.get("locality", {})
 

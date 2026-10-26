@@ -438,7 +438,7 @@ def map_row_to_db_offer(row: pd.Series) -> dict:
         contact_parts.append(f"Kontakt: {row.get('contact_person')}")
 
     contact = (
-        " | ".join(contact_parts) if contact_parts else "Není k dispozici"
+        " | ".join(contact_parts) if contact_parts else "Kontakt není k dispozici"
     )
 
     # Use the pre-calculated hash from the DataFrame row, with a safe fallback
