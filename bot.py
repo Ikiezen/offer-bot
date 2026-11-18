@@ -924,12 +924,8 @@ async def periodic_scraping(scraper, database):
 
             # Combine all 6 scrapers
             sources = [
-                df_bazos,
-                df_domonaut,
                 df_octopus,
-                df_idnes,
-                df_sbazar,
-                df_sreality,
+                #df_bazos, df_domonaut, df_idnes, df_sbazar, df_sreality,
             ]
             all_listings = pd.concat(sources, ignore_index=True)
 
