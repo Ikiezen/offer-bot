@@ -16,7 +16,19 @@ import pickle
 import re
 import requests
 import unicodedata
-
+from dataclasses import dataclass 
+@dataclass
+class SearchFilter:
+    price_min: int = 10000
+    price_max: int = 200000
+    region: str = "Praha"
+    zip_code: str = "11000"
+    radius_km: int = 10
+    category: str = "byt"
+    offer_type: str = "pronajem"
+    praha_districts: list[int] = field(
+        default_factory=lambda: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+    )
 
 # ---------------------------------------------------------------------------
 # Helper Functions
